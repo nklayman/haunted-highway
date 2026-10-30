@@ -88,15 +88,24 @@ export class UsbLink {
       }
     }
     if (link.dataIface == null || link.outEp == null) throw new Error('no CDC data interface on wheel');
-    // Android sometimes refuses the claim right after page load (e.g. while the screen
-    // is being opened at the same time); it succeeds moments later, so retry.
-    for (let attempt = 1; ; attempt++) {
-      try { await device.claimInterface(link.dataIface); break; }
-      catch (e) { if (attempt >= 5) throw e; await sleep(300 * attempt); }
-    }
+
+    // Claim the control interface first: on Android the kernel's cdc_acm driver is bound
+    // through it and holds the data interface too, so the data claim fails until the
+    // control claim has detached that driver. Retry a few times in case Android is
+    // still busy with the device right after page load.
+    const claim = async (n) => {
+      for (let attempt = 1; ; attempt++) {
+        try { await device.claimInterface(n); return; }
+        catch (e) { if (attempt >= 4) throw e; await sleep(250 * attempt); }
+      }
+    };
     if (link.commIface != null) {
+      try { await claim(link.commIface); }
+      catch (e) { link.commError = e.message; }
+    }
+    await claim(link.dataIface);
+    if (link.commIface != null && !link.commError) {
       try {
-        await device.claimInterface(link.commIface);
         const ctl = (request, value, data) => device.controlTransferOut(
           { requestType: 'class', recipient: 'interface', request, value, index: link.commIface }, data);
         await ctl(0x20, 0, new Uint8Array([0x00, 0xc2, 0x01, 0x00, 0x00, 0x00, 0x08])); // SET_LINE_CODING 115200 8N1
