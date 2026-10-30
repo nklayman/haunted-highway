@@ -13,6 +13,15 @@
   canvas { width: 100%; max-width: 800px; background: #000; border: 1px solid #444; display: block; }
   #log { white-space: pre-wrap; font: 12px ui-monospace, monospace; background: #000; padding: 8px; max-height: 140px; overflow: auto; }
 </style>
+<script>
+  // Plain script so it runs even if the module below fails to load: show any error on screen.
+  addEventListener('error', (e) => {
+    const msg = e.message || `failed to load ${e.target?.src || e.target?.href || 'a resource'}`;
+    const d = document.getElementById('fatal') || document.body.appendChild(Object.assign(document.createElement('pre'), { id: 'fatal' }));
+    d.style.cssText = 'background:#600;color:#fff;padding:8px;white-space:pre-wrap;font:13px monospace';
+    d.textContent += msg + '\n';
+  }, true);
+</script>
 </head>
 <body>
   <div class="row">
@@ -24,10 +33,10 @@
   <p>Paddles change lanes · right clutch boost (charges brakes) · left clutch brake (uses brake meter on the LEDs) · thumb buttons start. Keyboard: ← → ↑ ↓ space.</p>
   <div id="log"></div>
 <script type="module">
-import { createGame, ledFrame } from './game.js';
-import { WheelLeds, openLink } from './wheelleds.js';
-import { createScreen } from './screen.js';
-import { startBridge, bridgeLog } from './bridge.js';
+import { createGame, ledFrame } from './game.js?v=1dae977';
+import { WheelLeds, openLink } from './wheelleds.js?v=1dae977';
+import { createScreen } from './screen.js?v=1dae977';
+import { startBridge, bridgeLog } from './bridge.js?v=1dae977';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('canvas');

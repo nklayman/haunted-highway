@@ -1,6 +1,6 @@
 // Mirrors a canvas onto the wheel screen: handles connect/reconnect and streams
 // frames back-to-back (each send starts as soon as the previous transfer ends).
-import * as vc from './vocore.js';
+import * as vc from './vocore.js?v=1dae977';
 
 export function createScreen(canvas, { onStatus = () => {}, log = console.log } = {}) {
   const ctx = canvas.getContext('2d', { willReadFrequently: true });

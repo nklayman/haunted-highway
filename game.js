@@ -1,7 +1,7 @@
 // Lane-runner prototype: the car auto-steers along an endless winding road and
 // stays fixed on screen while the world rotates around it. Paddles hop lanes
 // to dodge rows of traffic; clutches boost/brake; thumbs start/restart.
-import { createWheelInput } from './input.js';
+import { createWheelInput } from './input.js?v=1dae977';
 
 export const W = 800, H = 480;
 

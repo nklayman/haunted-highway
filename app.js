@@ -1,7 +1,7 @@
 // Display test page: owns the WebUSB device and runs JS sent from the dev
 // bridge (server.mjs) so the screen can be driven from a terminal.
-import * as vc from './vocore.js';
-import { startBridge, bridgeLog } from './bridge.js';
+import * as vc from './vocore.js?v=1dae977';
+import { startBridge, bridgeLog } from './bridge.js?v=1dae977';
 
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d', { willReadFrequently: true });

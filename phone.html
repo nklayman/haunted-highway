@@ -16,6 +16,15 @@
   #log { white-space: pre-wrap; font: 12px ui-monospace, monospace; background: #000; padding: 8px; height: 200px; overflow: auto; }
   input[type=range] { flex: 1; min-width: 160px; }
 </style>
+<script>
+  // Plain script so it runs even if the module below fails to load: show any error on screen.
+  addEventListener('error', (e) => {
+    const msg = e.message || `failed to load ${e.target?.src || e.target?.href || 'a resource'}`;
+    const d = document.getElementById('fatal') || document.body.appendChild(Object.assign(document.createElement('pre'), { id: 'fatal' }));
+    d.style.cssText = 'background:#600;color:#fff;padding:8px;white-space:pre-wrap;font:13px monospace';
+    d.textContent += msg + '\n';
+  }, true);
+</script>
 </head>
 <body>
   <h1>Racewheel phone → screen test</h1>
@@ -33,7 +42,7 @@
   <canvas id="canvas" width="800" height="480"></canvas>
   <div id="log"></div>
 <script type="module">
-import * as vc from './vocore.js';
+import * as vc from './vocore.js?v=1dae977';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('canvas');
