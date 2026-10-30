@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Racewheel Phone Test</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font: 16px system-ui, sans-serif; background: #111; color: #ddd; margin: 16px; }
+  h1 { font-size: 20px; margin: 0 0 12px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; align-items: center; }
+  button { font: inherit; padding: 12px 16px; border-radius: 8px; border: 1px solid #555; background: #2a2a2a; color: #eee; }
+  button:disabled { opacity: 0.4; }
+  #status { padding: 8px; background: #000; border-radius: 6px; }
+  canvas { width: 100%; max-width: 800px; background: #000; border: 1px solid #444; }
+  #log { white-space: pre-wrap; font: 12px ui-monospace, monospace; background: #000; padding: 8px; height: 200px; overflow: auto; }
+  input[type=range] { flex: 1; min-width: 160px; }
+</style>
+</head>
+<body>
+  <h1>Racewheel phone → screen test</h1>
+  <div id="status">not connected</div>
+  <div class="row">
+    <button id="connect">Connect screen</button>
+    <button id="pattern" disabled>Test pattern</button>
+    <button id="fps" disabled>5 s FPS test</button>
+    <button id="touch" disabled>Touch test</button>
+  </div>
+  <div class="row">
+    <label for="bright">Brightness</label>
+    <input id="bright" type="range" min="0" max="255" value="255" disabled>
+  </div>
+  <canvas id="canvas" width="800" height="480"></canvas>
+  <div id="log"></div>
+<script type="module">
+import * as vc from './vocore.js';
+
+const $ = (id) => document.getElementById(id);
+const canvas = $('canvas');
+const ctx = canvas.getContext('2d', { willReadFrequently: true });
+const W = vc.WIDTH, H = vc.HEIGHT;
+let dev = null, ep = null, busy = false, touching = false;
+
+function log(...a) {
+  $('log').textContent += a.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ') + '\n';
+  $('log').scrollTop = 1e9;
+}
+const status = (s) => ($('status').textContent = s);
+const enable = (on) => ['pattern', 'fps', 'touch', 'bright'].forEach((id) => ($(id).disabled = !on));
+const send = () => vc.sendFrame(dev, ep, vc.toRGB565(ctx, W, H));
+
+window.addEventListener('error', (e) => log('error:', e.message));
+window.addEventListener('unhandledrejection', (e) => log('error:', String(e.reason)));
+
+async function attach(d) {
+  dev = d;
+  ep = await vc.init(dev);
+  status(`connected: ${dev.manufacturerName} ${dev.productName} (ep ${ep})`);
+  enable(true);
+  drawPattern();
+  await send();
+  log('init ok, pattern sent');
+}
+
+function drawPattern(label = 'PHONE OK') {
+  ['#f00', '#0f0', '#00f', '#fff'].forEach((c, i) => { ctx.fillStyle = c; ctx.fillRect((i * W) / 4, 0, W / 4, H * 0.6); });
+  const g = ctx.createLinearGradient(0, 0, W, 0);
+  g.addColorStop(0, '#000'); g.addColorStop(1, '#fff');
+  ctx.fillStyle = g; ctx.fillRect(0, H * 0.6, W, H * 0.15);
+  ctx.fillStyle = '#222'; ctx.fillRect(0, H * 0.75, W, H * 0.25);
+  ctx.fillStyle = '#ff0'; ctx.fillRect(0, 0, 60, 60);
+  ctx.fillStyle = '#000'; ctx.font = 'bold 28px sans-serif'; ctx.fillText('TL', 10, 42);
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 48px sans-serif'; ctx.fillText(label, 40, H - 40);
+  ctx.strokeStyle = '#f0f'; ctx.lineWidth = 4; ctx.strokeRect(2, 2, W - 4, H - 4);
+}
+
+if (!navigator.usb) {
+  status(isSecureContext ? 'WebUSB not supported in this browser' : 'WebUSB needs https');
+  $('connect').disabled = true;
+} else {
+  const granted = (await navigator.usb.getDevices()).find((d) => d.vendorId === vc.VENDOR_ID);
+  if (granted) attach(granted).catch((e) => log('auto-connect failed:', e.message));
+  navigator.usb.addEventListener('disconnect', (e) => {
+    if (e.device === dev) { dev = null; touching = false; enable(false); status('device disconnected'); log('disconnected'); }
+  });
+}
+
+$('connect').onclick = async () => {
+  try { await attach(await navigator.usb.requestDevice({ filters: [{ vendorId: vc.VENDOR_ID }] })); }
+  catch (e) { log('connect failed:', e.message); }
+};
+
+$('pattern').onclick = async () => { drawPattern(); await send(); log('pattern sent'); };
+
+$('bright').oninput = (e) => vc.setBrightness(dev, Number(e.target.value));
+
+$('fps').onclick = async () => {
+  if (busy) return;
+  busy = true; $('fps').disabled = true;
+  const start = performance.now();
+  let frames = 0, convMs = 0, usbMs = 0;
+  while (performance.now() - start < 5000 && dev) {
+    const t = (performance.now() - start) / 1000;
+    ctx.fillStyle = `hsl(${(t * 72) % 360} 60% 20%)`; ctx.fillRect(0, 0, W, H);
+    const x = (W - 120) * (0.5 + 0.5 * Math.sin(t * 3));
+    ctx.fillStyle = '#ff0'; ctx.fillRect(x, H / 2 - 60, 120, 120);
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 40px sans-serif';
+    ctx.fillText(`frame ${frames}  ${(frames / Math.max(t, 0.001)).toFixed(1)} fps`, 30, 60);
+    const a = performance.now();
+    const px = vc.toRGB565(ctx, W, H);
+    const b = performance.now();
+    await vc.sendFrame(dev, ep, px);
+    convMs += b - a; usbMs += performance.now() - b; frames++;
+  }
+  const secs = (performance.now() - start) / 1000;
+  log(`FPS test: ${frames} frames in ${secs.toFixed(1)} s = ${(frames / secs).toFixed(1)} fps; ` +
+      `avg convert ${(convMs / frames).toFixed(1)} ms, avg USB ${(usbMs / frames).toFixed(1)} ms`);
+  busy = false; $('fps').disabled = false;
+};
+
+// Touch reports arrive on interrupt IN ep 1: [?, ?, count, xh, xl, yh, yl, ...],
+// coordinates in the panel's native (portrait) orientation.
+$('touch').onclick = async () => {
+  touching = !touching;
+  $('touch').textContent = touching ? 'Stop touch test' : 'Touch test';
+  if (!touching) return;
+  log('touch test: tap the wheel screen');
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 40px sans-serif'; ctx.fillText('Tap the screen', 260, 250);
+  await send();
+  while (touching && dev) {
+    const r = await dev.transferIn(1, 64);
+    const b = new Uint8Array(r.data.buffer);
+    const count = b[2], ev = b[3] >> 6;
+    const px = ((b[3] & 0x0f) << 8) | b[4], py = ((b[5] & 0x0f) << 8) | b[6];
+    // Inverse of the 270° frame rotation: panel (px, py) -> canvas (W - py, px).
+    const x = W - py, y = px;
+    log(`touch count=${count} ev=${ev} raw=(${px},${py}) -> canvas (${x},${y})`);
+    if (count) {
+      ctx.fillStyle = '#0f0'; ctx.beginPath(); ctx.arc(x, y, 14, 0, Math.PI * 2); ctx.fill();
+      await send();
+    }
+  }
+};
+</script>
+</body>
+</html>
