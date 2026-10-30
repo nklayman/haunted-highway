@@ -125,6 +125,11 @@ setInterval(() => {
 }, 50);
 
 // ---- inputs ----
+// Android may deliver wheel buttons Chrome doesn't map to the Gamepad API as key events.
+for (const type of ['keydown', 'keyup']) {
+  addEventListener(type, (e) => log(`${type} key=${JSON.stringify(e.key)} code=${JSON.stringify(e.code)} keyCode=${e.keyCode}`));
+}
+addEventListener('gamepadconnected', (e) => log(`gamepad connected: #${e.gamepad.index} ${e.gamepad.id} buttons=${e.gamepad.buttons.length} axes=${e.gamepad.axes.length} mapping=${e.gamepad.mapping || 'none'}`));
 function padsText() {
   const pads = [...navigator.getGamepads()].filter(Boolean);
   if (!pads.length) return 'no gamepads yet — press a wheel button';
