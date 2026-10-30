@@ -1,7 +1,7 @@
 // Lane-runner prototype: the car auto-steers along an endless winding road and
 // stays fixed on screen while the world rotates around it. Paddles hop lanes
 // to dodge rows of traffic; clutches boost/brake; thumbs start/restart.
-import { createWheelInput } from './input.js?v=bb649cd';
+import { createWheelInput } from './input.js?v=626f8bb';
 
 export const W = 800, H = 480;
 
@@ -151,9 +151,11 @@ export function createGame(canvas) {
     const w = pollWheel();
     const kp = (code) => keyPresses.has(code);
     const input = {
-      left: w.pressed.leftPaddle || kp('ArrowLeft') || kp('KeyA'),
-      right: w.pressed.rightPaddle || kp('ArrowRight') || kp('KeyD'),
-      start: w.pressed.leftThumb || w.pressed.rightThumb || kp('Space') || kp('Enter'),
+      // Paddles on desktop; D-pad too (the only buttons Android Chrome passes through).
+      left: w.pressed.leftPaddle || w.pressed.dpadLeft || kp('ArrowLeft') || kp('KeyA'),
+      right: w.pressed.rightPaddle || w.pressed.dpadRight || kp('ArrowRight') || kp('KeyD'),
+      start: w.pressed.leftThumb || w.pressed.rightThumb || w.pressed.dpadUp || w.pressed.dpadDown ||
+        kp('Space') || kp('Enter') || kp('ArrowUp') || kp('ArrowDown'),
       boost: Math.max(w.rightClutch, keys.has('ArrowUp') ? 1 : 0),
       brake: Math.max(w.leftClutch, keys.has('ArrowDown') ? 1 : 0),
       wheel: w.connected,
@@ -294,7 +296,7 @@ export function createGame(canvas) {
       ctx.font = 'bold 48px system-ui, sans-serif';
       ctx.fillText(g.mode === 'ready' ? 'LANE RACER' : 'CRASHED', W / 2, 132);
       ctx.font = '26px system-ui, sans-serif';
-      ctx.fillText('thumb button to ' + (g.mode === 'ready' ? 'start' : 'restart') + ' · paddles change lanes', W / 2, 172);
+      ctx.fillText('thumb/D-pad to ' + (g.mode === 'ready' ? 'start' : 'restart') + ' · paddles or D-pad change lanes', W / 2, 172);
     }
   }
 
