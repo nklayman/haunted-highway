@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Racewheel Phone Test 2</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font: 16px system-ui, sans-serif; background: #111; color: #ddd; margin: 16px; }
+  h1 { font-size: 20px; margin: 0 0 8px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; align-items: center; }
+  button, a.btn { font: inherit; padding: 12px 16px; border-radius: 8px; border: 1px solid #555; background: #2a2a2a; color: #eee; text-decoration: none; }
+  #status { font-size: 14px; color: #aaa; white-space: pre-wrap; }
+  pre { font: 13px ui-monospace, monospace; background: #000; padding: 8px; white-space: pre-wrap; margin: 8px 0; }
+  canvas { width: 100%; max-width: 800px; background: #000; border: 1px solid #444; display: block; }
+  #log { white-space: pre-wrap; font: 12px ui-monospace, monospace; background: #000; padding: 8px; max-height: 200px; overflow: auto; }
+</style>
+</head>
+<body>
+  <h1>Phone test: screen · LEDs · inputs</h1>
+  <div id="status"></div>
+  <div class="row">
+    <button id="connectScreen">Connect screen</button>
+    <button id="connectLeds">Connect LEDs</button>
+    <a class="btn" href="game.html">Open game →</a>
+  </div>
+  <div class="row">
+    LEDs:
+    <button data-mode="dot">Moving dot</button>
+    <button data-mode="meter">Meter sweep</button>
+    <button data-mode="off">Off</button>
+  </div>
+  <p>Press each wheel control and watch the readout (also shown on the wheel screen).</p>
+  <pre id="pads">no gamepads yet — press a wheel button</pre>
+  <canvas id="canvas" width="800" height="480"></canvas>
+  <div id="log"></div>
+<script type="module">
+import { createScreen } from './screen.js';
+import { WheelLeds, UsbLink, SerialLink, WHEEL_VID } from './wheelleds.js';
+import { ledFrame } from './game.js';
+
+const $ = (id) => document.getElementById(id);
+const canvas = $('canvas');
+const ctx = canvas.getContext('2d', { willReadFrequently: true });
+const st = { screen: 'screen: not connected', leds: 'leds: not connected' };
+const showStatus = () => ($('status').textContent = `${st.screen}\n${st.leds}\nWebUSB: ${!!navigator.usb} · Web Serial: ${!!navigator.serial}`);
+
+function log(...a) {
+  $('log').textContent += a.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ') + '\n';
+  $('log').scrollTop = 1e9;
+}
+addEventListener('error', (e) => log('error:', e.message));
+addEventListener('unhandledrejection', (e) => log('error:', String(e.reason)));
+
+const screen = createScreen(canvas, { log, onStatus: (s) => { st.screen = s; showStatus(); } });
+$('connectScreen').onclick = () => screen.connect().catch((e) => log('screen connect failed:', e.message));
+
+// ---- LEDs ----
+let leds = null, mode = 'dot', step = 0;
+async function startLeds(link) {
+  if (link.query) {
+    const proto = (await link.query('proto')).trim();
+    const count = (await link.query('ledsc')).trim();
+    log(`wheel says: proto=${JSON.stringify(proto)} leds=${JSON.stringify(count)}${link.commError ? ' (line setup: ' + link.commError + ')' : ''}`);
+  }
+  leds = new WheelLeds(link, log);
+  st.leds = `leds: on (${link instanceof UsbLink ? 'WebUSB' : 'Web Serial'})`; showStatus();
+}
+async function connectLeds(fromGesture) {
+  try {
+    if (navigator.serial) {
+      const ports = await navigator.serial.getPorts();
+      const port = ports.find((p) => p.getInfo().usbVendorId === WHEEL_VID) ||
+        (fromGesture && await navigator.serial.requestPort({ filters: [{ usbVendorId: WHEEL_VID }] }));
+      if (port) await startLeds(await SerialLink.open(port));
+    } else if (navigator.usb) {
+      const devs = await navigator.usb.getDevices();
+      const dev = devs.find((d) => d.vendorId === WHEEL_VID) ||
+        (fromGesture && await navigator.usb.requestDevice({ filters: [{ vendorId: WHEEL_VID }] }));
+      if (dev) await startLeds(await UsbLink.open(dev));
+    }
+  } catch (e) { log('leds failed:', e.message); st.leds = 'leds: failed — ' + e.message; showStatus(); }
+}
+$('connectLeds').onclick = () => connectLeds(true);
+connectLeds(false);
+document.querySelectorAll('[data-mode]').forEach((b) => (b.onclick = () => (mode = b.dataset.mode)));
+
+setInterval(() => {
+  if (!leds || leds.closed) return;
+  step++;
+  if (mode === 'dot') {
+    const pos = Math.floor(step / 5) % 21;
+    leds.set(Array.from({ length: 39 }, (_, i) => (i < 21 ? (i === pos ? [255, 255, 255] : [0, 0, 60]) : [0, 30, 0])));
+  } else if (mode === 'meter') {
+    const e = 1 - (step % 120) / 119; // 6 s sweep full -> empty
+    leds.set(ledFrame({ brakeEnergy: e, braking: 0, mode: 'playing' }));
+  } else {
+    leds.set(Array.from({ length: 39 }, () => [0, 0, 0]));
+  }
+}, 50);
+
+// ---- inputs ----
+function padsText() {
+  const pads = [...navigator.getGamepads()].filter(Boolean);
+  if (!pads.length) return 'no gamepads yet — press a wheel button';
+  return pads.map((p) => {
+    const pressed = p.buttons.map((b, i) => (b.pressed || b.value > 0.05 ? `${i}${b.value < 1 ? '=' + b.value.toFixed(2) : ''}` : null)).filter(Boolean);
+    const axes = p.axes.map((a, i) => `${i}:${a.toFixed(2)}`);
+    return `#${p.index} ${p.id}\n  mapping=${p.mapping || 'none'} buttons=${p.buttons.length} axes=${p.axes.length}\n  pressed: ${pressed.join(' ') || '-'}\n  axes: ${axes.join(' ')}`;
+  }).join('\n');
+}
+function frame() {
+  const text = padsText();
+  $('pads').textContent = text;
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, 800, 480);
+  ctx.fillStyle = '#fff'; ctx.font = '22px ui-monospace, monospace';
+  let y = 34;
+  for (const line of text.split('\n')) {
+    for (let i = 0; i < line.length; i += 60) { ctx.fillText(line.slice(i, i + 60), 14, y); y += 28; }
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+showStatus();
+</script>
+</body>
+</html>

@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wheel LED Debug</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font: 16px system-ui, sans-serif; background: #111; color: #ddd; margin: 16px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; align-items: center; }
+  button { font: inherit; padding: 12px 16px; border-radius: 8px; border: 1px solid #555; background: #2a2a2a; color: #eee; }
+  #status { font-size: 14px; color: #aaa; }
+  #log { white-space: pre-wrap; font: 12px ui-monospace, monospace; background: #000; padding: 8px; height: 60vh; overflow: auto; }
+</style>
+</head>
+<body>
+  <h1>Wheel LED debug</h1>
+  <div class="row">
+    <button id="hid">Connect HID</button>
+    <button id="serial">Connect serial</button>
+    <span id="status"></span>
+  </div>
+  <div id="log"></div>
+<script type="module">
+import { startBridge, bridgeLog } from './bridge.js';
+
+const WHEEL_VID = 0x3514;
+const $ = (id) => document.getElementById(id);
+const hex = (bytes) => Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join(' ');
+const dbg = { hid: [], port: null, serialRx: [], hex };
+let bridgeState = '';
+
+function log(...a) {
+  const line = a.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ');
+  $('log').textContent += line + '\n';
+  $('log').scrollTop = 1e9;
+  bridgeLog(line);
+}
+function showStatus() {
+  $('status').textContent = `hid: ${dbg.hid.length} open · serial: ${dbg.port ? 'open' : 'closed'} · bridge: ${bridgeState}`;
+}
+addEventListener('error', (e) => log('error:', e.message));
+addEventListener('unhandledrejection', (e) => log('error:', String(e.reason)));
+
+// Summarise every top-level collection and its reports so we can spot the LED channel.
+function describeHid(d) {
+  return {
+    product: d.productName,
+    collections: d.collections.map((c) => ({
+      usagePage: '0x' + c.usagePage.toString(16), usage: '0x' + c.usage.toString(16),
+      input: c.inputReports.map((r) => ({ id: r.reportId, bits: r.items.reduce((n, i) => n + i.reportSize * i.reportCount, 0) })),
+      output: c.outputReports.map((r) => ({ id: r.reportId, bits: r.items.reduce((n, i) => n + i.reportSize * i.reportCount, 0) })),
+      feature: c.featureReports.map((r) => ({ id: r.reportId, bits: r.items.reduce((n, i) => n + i.reportSize * i.reportCount, 0) })),
+    })),
+  };
+}
+
+async function openHid(devices) {
+  for (const d of devices) {
+    if (!d.opened) await d.open();
+    if (!dbg.hid.includes(d)) {
+      dbg.hid.push(d);
+      d.addEventListener('inputreport', (e) => {
+        // Gamepad reports are constant noise; only log non-gamepad report IDs.
+        if (dbg.logInput?.(e)) log(`hid in id=${e.reportId}: ${hex(new Uint8Array(e.data.buffer))}`);
+      });
+    }
+    log('hid', JSON.stringify(describeHid(d)));
+  }
+  showStatus();
+}
+
+async function openSerial(port, baudRate = 115200) {
+  if (dbg.port) { try { await dbg.port.close(); } catch {} }
+  await port.open({ baudRate });
+  dbg.port = port;
+  log('serial open', JSON.stringify(port.getInfo()), 'baud', baudRate);
+  showStatus();
+  (async () => {
+    const reader = port.readable.getReader();
+    dbg.reader = reader;
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        dbg.serialRx.push(...value);
+        log(`serial rx: ${hex(value)}  ${JSON.stringify(new TextDecoder().decode(value))}`);
+      }
+    } catch (e) { log('serial read ended:', e.message); }
+    finally { reader.releaseLock(); }
+  })();
+}
+
+dbg.serialWrite = async (bytes) => {
+  const data = typeof bytes === 'string' ? new TextEncoder().encode(bytes) : new Uint8Array(bytes);
+  const w = dbg.port.writable.getWriter();
+  try { await w.write(data); } finally { w.releaseLock(); }
+  return data.length;
+};
+dbg.openSerial = openSerial;
+
+$('hid').onclick = async () => {
+  try { await openHid(await navigator.hid.requestDevice({ filters: [{ vendorId: WHEEL_VID }] })); }
+  catch (e) { log('hid connect failed:', e.message); }
+};
+$('serial').onclick = async () => {
+  try { await openSerial(await navigator.serial.requestPort({ filters: [{ usbVendorId: WHEEL_VID }] })); }
+  catch (e) { log('serial connect failed:', e.message); }
+};
+
+// Reopen anything already granted.
+if (navigator.hid) openHid((await navigator.hid.getDevices()).filter((d) => d.vendorId === WHEEL_VID));
+else log('WebHID not available');
+if (!navigator.serial) log('Web Serial not available');
+
+startBridge(() => ({ dbg, log }), (s) => { bridgeState = s; showStatus(); });
+showStatus();
+</script>
+</body>
+</html>
