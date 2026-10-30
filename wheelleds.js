@@ -170,3 +170,28 @@ export class WheelLeds {
     await this.link.close();
   }
 }
+
+// Connect to the wheel's LEDs with whichever transport fits this platform:
+// WebUSB on Android (its Web Serial doesn't list USB serial devices), Web Serial
+// elsewhere (on Windows the serial interface belongs to the COM-port driver).
+// With gesture=false only previously-granted devices are used (no picker).
+export function preferredTransport() {
+  if (navigator.usb && (/Android/i.test(navigator.userAgent) || !navigator.serial)) return 'usb';
+  return navigator.serial ? 'serial' : null;
+}
+
+export async function openLink({ gesture = false, transport = preferredTransport() } = {}) {
+  if (transport === 'usb') {
+    const devs = await navigator.usb.getDevices();
+    const dev = devs.find((d) => d.vendorId === WHEEL_VID) ||
+      (gesture ? await navigator.usb.requestDevice({ filters: [{ vendorId: WHEEL_VID }] }) : null);
+    return dev ? UsbLink.open(dev) : null;
+  }
+  if (transport === 'serial') {
+    const ports = await navigator.serial.getPorts();
+    const port = ports.find((p) => p.getInfo().usbVendorId === WHEEL_VID) ||
+      (gesture ? await navigator.serial.requestPort({ filters: [{ usbVendorId: WHEEL_VID }] }) : null);
+    return port ? SerialLink.open(port) : null;
+  }
+  throw new Error('no WebUSB or Web Serial in this browser');
+}

@@ -36,14 +36,14 @@
   <div id="log"></div>
 <script type="module">
 import { createScreen } from './screen.js';
-import { WheelLeds, UsbLink, SerialLink, WHEEL_VID } from './wheelleds.js';
+import { WheelLeds, UsbLink, openLink, preferredTransport } from './wheelleds.js';
 import { ledFrame } from './game.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('canvas');
 const ctx = canvas.getContext('2d', { willReadFrequently: true });
 const st = { screen: 'screen: not connected', leds: 'leds: not connected' };
-const showStatus = () => ($('status').textContent = `${st.screen}\n${st.leds}\nWebUSB: ${!!navigator.usb} · Web Serial: ${!!navigator.serial}`);
+const showStatus = () => ($('status').textContent = `${st.screen}\n${st.leds}\nWebUSB: ${!!navigator.usb} · Web Serial: ${!!navigator.serial} · LEDs via: ${preferredTransport()}`);
 
 function log(...a) {
   $('log').textContent += a.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ') + '\n';
@@ -66,19 +66,10 @@ async function startLeds(link) {
   leds = new WheelLeds(link, log);
   st.leds = `leds: on (${link instanceof UsbLink ? 'WebUSB' : 'Web Serial'})`; showStatus();
 }
-async function connectLeds(fromGesture) {
+async function connectLeds(gesture) {
   try {
-    if (navigator.serial) {
-      const ports = await navigator.serial.getPorts();
-      const port = ports.find((p) => p.getInfo().usbVendorId === WHEEL_VID) ||
-        (fromGesture && await navigator.serial.requestPort({ filters: [{ usbVendorId: WHEEL_VID }] }));
-      if (port) await startLeds(await SerialLink.open(port));
-    } else if (navigator.usb) {
-      const devs = await navigator.usb.getDevices();
-      const dev = devs.find((d) => d.vendorId === WHEEL_VID) ||
-        (fromGesture && await navigator.usb.requestDevice({ filters: [{ vendorId: WHEEL_VID }] }));
-      if (dev) await startLeds(await UsbLink.open(dev));
-    }
+    const link = await openLink({ gesture });
+    if (link) await startLeds(link);
   } catch (e) { log('leds failed:', e.message); st.leds = 'leds: failed — ' + e.message; showStatus(); }
 }
 $('connectLeds').onclick = () => connectLeds(true);
