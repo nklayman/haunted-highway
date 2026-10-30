@@ -1,7 +1,7 @@
 // Conspit MAX 01 wheel controls via the Gamepad API.
 // Windows Chrome: mapping "none", 32 buttons, 10 axes, D-pad on hat axis 9.
 // Android Chrome: only standard-gamepad inputs survive — the clutch axes and the
-// D-pad (standard buttons 12-15, or arrow-key events) — not paddles/thumb buttons.
+// D-pad (buttons 12-15) — not paddles/thumb buttons.
 // Chrome only exposes the pad after a button press while the page has focus.
 
 const WHEEL_ID = /CONSPIT MAX 01|Vendor: 3514 Product: 000f/i;
@@ -38,7 +38,9 @@ export function createWheelInput() {
     const pad = findWheel();
     const down = {};
     for (const [name, i] of Object.entries(BUTTONS)) down[name] = pad?.mapping !== 'standard' && !!pad?.buttons[i]?.pressed;
-    const dpad = pad?.mapping === 'standard'
+    // Android puts the D-pad on buttons 12-15 whether or not it reports the "standard"
+    // mapping; on Windows those are real wheel buttons and the D-pad is a hat axis.
+    const dpad = pad && (ANDROID || pad.mapping === 'standard')
       ? Object.fromEntries(Object.entries(STANDARD_DPAD).map(([name, i]) => [name, !!pad.buttons[i]?.pressed]))
       : readHat(pad?.axes[HAT_AXIS]);
     Object.assign(down, dpad);

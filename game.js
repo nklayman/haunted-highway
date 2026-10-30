@@ -1,7 +1,7 @@
 // Lane-runner prototype: the car auto-steers along an endless winding road and
 // stays fixed on screen while the world rotates around it. Paddles hop lanes
 // to dodge rows of traffic; clutches boost/brake; thumbs start/restart.
-import { createWheelInput } from './input.js?v=626f8bb';
+import { createWheelInput } from './input.js?v=d678452';
 
 export const W = 800, H = 480;
 
@@ -147,8 +147,12 @@ export function createGame(canvas) {
   }
   reset('ready');
 
+  const debug = new URLSearchParams(location.search).has('debug');
+  let lastWheel = null;
+
   function readInput() {
     const w = pollWheel();
+    lastWheel = w;
     const kp = (code) => keyPresses.has(code);
     const input = {
       // Paddles on desktop; D-pad too (the only buttons Android Chrome passes through).
@@ -287,6 +291,22 @@ export function createGame(canvas) {
     ctx.fillText(`BEST ${best}`, W / 2, 38);
     ctx.textAlign = 'right';
     ctx.fillText(`${Math.round(g.speed * 0.3)} km/h`, W - 18, 38);
+
+    if (debug && lastWheel) {
+      const pad = [...navigator.getGamepads()].find(Boolean);
+      const on = Object.keys(lastWheel).filter((k) => lastWheel[k] === true);
+      const lines = [
+        `pad: ${pad ? `${pad.id.slice(0, 40)} map=${pad.mapping || 'none'} b=${pad.buttons.length} a=${pad.axes.length}` : 'none'}`,
+        `raw pressed: ${pad ? pad.buttons.map((x, i) => (x.pressed ? i : null)).filter((x) => x !== null).join(' ') || '-' : '-'}`,
+        `wheel: ${on.filter((k) => k !== 'connected').join(' ') || '-'}  L=${lastWheel.leftClutch.toFixed(2)} R=${lastWheel.rightClutch.toFixed(2)}`,
+      ];
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillRect(0, H - 92, W, 92);
+      ctx.fillStyle = '#0f0';
+      ctx.font = '20px ui-monospace, monospace';
+      ctx.textAlign = 'left';
+      lines.forEach((l, i) => ctx.fillText(l, 10, H - 66 + i * 26));
+    }
 
     if (g.mode !== 'playing') {
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
