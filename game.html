@@ -30,13 +30,13 @@
     <span id="status"></span>
   </div>
   <canvas id="canvas" width="800" height="480"></canvas>
-  <p>Paddles change lanes · right clutch boost (charges brakes) · left clutch brake (uses brake meter on the LEDs) · thumb buttons start. Keyboard: ← → ↑ ↓ space.</p>
+  <p>Paddles or D-pad change lanes · right clutch boost (charges brakes) · left clutch brake (uses brake meter on the LEDs). Menus: tap the wheel screen, or D-pad + right clutch to confirm, left clutch to go back. Keyboard: arrows, Enter, typing.</p>
   <div id="log"></div>
 <script type="module">
-import { createGame, ledFrame } from './game.js?v=d678452';
-import { WheelLeds, openLink } from './wheelleds.js?v=d678452';
-import { createScreen } from './screen.js?v=d678452';
-import { startBridge, bridgeLog } from './bridge.js?v=d678452';
+import { createGame, ledFrame } from './game.js?v=91ab52e';
+import { WheelLeds, openLink } from './wheelleds.js?v=91ab52e';
+import { createScreen } from './screen.js?v=91ab52e';
+import { startBridge, bridgeLog } from './bridge.js?v=91ab52e';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('canvas');
@@ -53,7 +53,12 @@ addEventListener('error', (e) => log('error:', e.message));
 addEventListener('unhandledrejection', (e) => log('error:', String(e.reason)));
 
 const game = createGame(canvas);
-const screen = createScreen(canvas, { log, onStatus: (s) => { st.screen = s; showStatus(); } });
+const screen = createScreen(canvas, { log, onStatus: (s) => { st.screen = s; showStatus(); }, onTap: (p) => game.tap(p) });
+// Clicks/taps on the page's preview canvas act like wheel-screen touches (handy on desktop).
+canvas.addEventListener('pointerdown', (e) => {
+  const r = canvas.getBoundingClientRect();
+  game.tap({ x: ((e.clientX - r.left) / r.width) * canvas.width, y: ((e.clientY - r.top) / r.height) * canvas.height });
+});
 setInterval(() => { st.fps = screen.connected ? `${screen.fps.toFixed(0)} fps` : ''; showStatus(); }, 1000);
 
 $('connect').onclick = () => screen.connect().catch((e) => log('connect failed:', e.message));
