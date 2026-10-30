@@ -6,7 +6,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "bridge": "node server.mjs",
-    "bridge:lan": "HOST=0.0.0.0 node server.mjs"
+    "bridge:lan": "HOST=0.0.0.0 node server.mjs",
+    "deploy": "node scripts/deploy.mjs --push"
   },
   "keywords": [],
   "author": "",
