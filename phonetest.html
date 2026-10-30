@@ -31,6 +31,7 @@
   <div class="row">
     <button id="connectScreen">Connect screen</button>
     <button id="connectLeds">Connect LEDs</button>
+    <button id="diag">Diagnose wheel USB</button>
     <a class="btn" href="game.html">Open game →</a>
   </div>
   <div class="row">
@@ -44,9 +45,9 @@
   <canvas id="canvas" width="800" height="480"></canvas>
   <div id="log"></div>
 <script type="module">
-import { createScreen } from './screen.js?v=1dae977';
-import { WheelLeds, UsbLink, openLink, preferredTransport } from './wheelleds.js?v=1dae977';
-import { ledFrame } from './game.js?v=1dae977';
+import { createScreen } from './screen.js?v=24cb7a5';
+import { WheelLeds, UsbLink, openLink, preferredTransport, WHEEL_VID } from './wheelleds.js?v=24cb7a5';
+import { ledFrame } from './game.js?v=24cb7a5';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('canvas');
@@ -82,6 +83,30 @@ async function connectLeds(gesture) {
   } catch (e) { log('leds failed:', e.message); st.leds = 'leds: failed — ' + e.message; showStatus(); }
 }
 $('connectLeds').onclick = () => connectLeds(true);
+
+// List the wheel's USB interfaces and try claiming each non-HID one, logging results.
+$('diag').onclick = async () => {
+  try {
+    const devs = await navigator.usb.getDevices();
+    const dev = devs.find((d) => d.vendorId === WHEEL_VID) || await navigator.usb.requestDevice({ filters: [{ vendorId: WHEEL_VID }] });
+    log(`device ${dev.productName} class=${dev.deviceClass}/${dev.deviceSubclass}/${dev.deviceProtocol} configs=${dev.configurations.length} opened=${dev.opened}`);
+    if (!dev.opened) await dev.open();
+    log(`active config: ${dev.configuration?.configurationValue}`);
+    if (!dev.configuration) await dev.selectConfiguration(1);
+    for (const iface of dev.configuration.interfaces) {
+      const a = iface.alternates[0];
+      const eps = a.endpoints.map((e) => `${e.direction}${e.endpointNumber}/${e.type}/${e.packetSize}`).join(' ');
+      log(`iface ${iface.interfaceNumber}: class=${a.interfaceClass}/${a.interfaceSubclass}/${a.interfaceProtocol} alts=${iface.alternates.length} claimed=${iface.claimed} eps=[${eps}]`);
+    }
+    for (const iface of dev.configuration.interfaces) {
+      if (iface.alternates[0].interfaceClass === 3) continue; // HID: blocked by Chrome, and Android uses it for the gamepad
+      try {
+        if (!iface.claimed) await dev.claimInterface(iface.interfaceNumber);
+        log(`claim iface ${iface.interfaceNumber}: OK`);
+      } catch (e) { log(`claim iface ${iface.interfaceNumber}: ${e.name}: ${e.message}`); }
+    }
+  } catch (e) { log('diag failed:', e.name, e.message); }
+};
 connectLeds(false);
 document.querySelectorAll('[data-mode]').forEach((b) => (b.onclick = () => (mode = b.dataset.mode)));
 
