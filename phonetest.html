@@ -45,9 +45,9 @@
   <canvas id="canvas" width="800" height="480"></canvas>
   <div id="log"></div>
 <script type="module">
-import { createScreen } from './screen.js?v=3e82b21';
-import { WheelLeds, UsbLink, openLink, preferredTransport, WHEEL_VID } from './wheelleds.js?v=3e82b21';
-import { ledFrame } from './game.js?v=3e82b21';
+import { createScreen } from './screen.js?v=bb649cd';
+import { WheelLeds, UsbLink, openLink, preferredTransport, WHEEL_VID } from './wheelleds.js?v=bb649cd';
+import { ledFrame } from './game.js?v=bb649cd';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('canvas');
@@ -125,6 +125,11 @@ setInterval(() => {
 }, 50);
 
 // ---- inputs ----
+// Android may deliver wheel buttons Chrome doesn't map to the Gamepad API as key events.
+for (const type of ['keydown', 'keyup']) {
+  addEventListener(type, (e) => log(`${type} key=${JSON.stringify(e.key)} code=${JSON.stringify(e.code)} keyCode=${e.keyCode}`));
+}
+addEventListener('gamepadconnected', (e) => log(`gamepad connected: #${e.gamepad.index} ${e.gamepad.id} buttons=${e.gamepad.buttons.length} axes=${e.gamepad.axes.length} mapping=${e.gamepad.mapping || 'none'}`));
 function padsText() {
   const pads = [...navigator.getGamepads()].filter(Boolean);
   if (!pads.length) return 'no gamepads yet — press a wheel button';
