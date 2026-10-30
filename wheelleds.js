@@ -88,7 +88,12 @@ export class UsbLink {
       }
     }
     if (link.dataIface == null || link.outEp == null) throw new Error('no CDC data interface on wheel');
-    await device.claimInterface(link.dataIface);
+    // Android sometimes refuses the claim right after page load (e.g. while the screen
+    // is being opened at the same time); it succeeds moments later, so retry.
+    for (let attempt = 1; ; attempt++) {
+      try { await device.claimInterface(link.dataIface); break; }
+      catch (e) { if (attempt >= 5) throw e; await sleep(300 * attempt); }
+    }
     if (link.commIface != null) {
       try {
         await device.claimInterface(link.commIface);
