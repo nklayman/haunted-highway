@@ -2,6 +2,8 @@
 // stays fixed on screen while the world rotates around it. Paddles hop lanes
 // to dodge rows of traffic; clutches boost/brake; thumbs start/restart.
 import { createWheelInput } from './input.js';
+import * as board from './leaderboard.js';
+import { createNameEntry, handleNameInput, drawNameEntry } from './nameentry.js';
 
 export const W = 800, H = 480;
 
@@ -130,12 +132,19 @@ export function planRow(prevPath, gap, closing, distM, rnd = Math.random) {
 export function createGame(canvas) {
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   const pollWheel = createWheelInput();
-  const keys = new Set(), keyPresses = new Set();
-  addEventListener('keydown', (e) => { if (!keys.has(e.code)) keyPresses.add(e.code); keys.add(e.code); });
+  const keys = new Set(), keyPresses = new Set(), typed = [], taps = [];
+  addEventListener('keydown', (e) => {
+    if (!keys.has(e.code)) keyPresses.add(e.code);
+    keys.add(e.code);
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) typed.push(e.key);
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Backspace'].includes(e.code)) e.preventDefault();
+  });
   addEventListener('keyup', (e) => keys.delete(e.code));
 
   let best = 0;
   const g = {};
+  const ui = { choice: 0, canSave: false, entry: null, board: null, enteredAt: 0 };
+  const topScore = () => board.load()[0]?.score ?? 0;
 
   function reset(mode) {
     Object.assign(g, {
@@ -150,22 +159,83 @@ export function createGame(canvas) {
   const debug = new URLSearchParams(location.search).has('debug');
   let lastWheel = null;
 
+  // Clutch "clicks" for menus: count a pull once it passes 0.7, re-arm below 0.3.
+  const clutch = { left: false, right: false };
+  function clutchEdge(side, v) {
+    if (!clutch[side] && v > 0.7) { clutch[side] = true; return true; }
+    if (clutch[side] && v < 0.3) clutch[side] = false;
+    return false;
+  }
+
   function readInput() {
     const w = pollWheel();
     lastWheel = w;
     const kp = (code) => keyPresses.has(code);
     const input = {
       // Paddles on desktop; D-pad too (the only buttons Android Chrome passes through).
-      left: w.pressed.leftPaddle || w.pressed.dpadLeft || kp('ArrowLeft') || kp('KeyA'),
-      right: w.pressed.rightPaddle || w.pressed.dpadRight || kp('ArrowRight') || kp('KeyD'),
-      start: w.pressed.leftThumb || w.pressed.rightThumb || w.pressed.dpadUp || w.pressed.dpadDown ||
-        kp('Space') || kp('Enter') || kp('ArrowUp') || kp('ArrowDown'),
+      left: w.pressed.leftPaddle || w.pressed.dpadLeft || kp('ArrowLeft'),
+      right: w.pressed.rightPaddle || w.pressed.dpadRight || kp('ArrowRight'),
+      up: w.pressed.dpadUp || kp('ArrowUp'),
+      down: w.pressed.dpadDown || kp('ArrowDown'),
+      // Menu confirm/back: right/left clutch pulls work everywhere; thumbs on desktop.
+      confirmPad: clutchEdge('right', w.rightClutch) || w.pressed.leftThumb || w.pressed.rightThumb,
+      back: clutchEdge('left', w.leftClutch) || kp('Escape'),
+      confirmKey: kp('Enter') || kp('Space'),
+      enter: kp('Enter'),
+      backspace: kp('Backspace'),
+      chars: typed.splice(0),
+      taps: taps.splice(0),
       boost: Math.max(w.rightClutch, keys.has('ArrowUp') ? 1 : 0),
       brake: Math.max(w.leftClutch, keys.has('ArrowDown') ? 1 : 0),
       wheel: w.connected,
     };
+    input.confirm = input.confirmPad || input.confirmKey;
     keyPresses.clear();
     return input;
+  }
+
+  // Touch/click targets for menu screens, in canvas coordinates.
+  const BTN = {
+    start: { x: 300, y: 392, w: 200, h: 64, label: 'START' },
+    save: { x: 150, y: 300, w: 230, h: 72, label: 'SAVE SCORE' },
+    again: { x: 420, y: 300, w: 230, h: 72, label: 'PLAY AGAIN' },
+    againSolo: { x: 285, y: 300, w: 230, h: 72, label: 'PLAY AGAIN' },
+    boardAgain: { x: 285, y: 404, w: 230, h: 60, label: 'PLAY AGAIN' },
+  };
+  const hit = (t, b) => t.x >= b.x && t.x < b.x + b.w && t.y >= b.y && t.y < b.y + b.h;
+
+  function gameOver() {
+    const score = Math.floor(g.s / 10);
+    best = Math.max(best, score);
+    g.mode = 'over';
+    g.crashedAt = g.time;
+    ui.canSave = board.qualifies(score);
+    ui.choice = ui.canSave ? 0 : 1;
+  }
+
+  function updateMenus(input) {
+    const settled = g.time - g.crashedAt > 0.6; // ignore inputs still held from the crash
+    if (g.mode === 'ready') {
+      if (input.confirm || input.up || input.down || input.taps.some((t) => hit(t, BTN.start))) reset('playing');
+    } else if (g.mode === 'over' && settled) {
+      if (ui.canSave && (input.left || input.right)) ui.choice ^= 1;
+      let act = input.confirm ? (ui.choice === 0 ? 'save' : 'again') : null;
+      for (const t of input.taps) {
+        if (ui.canSave && hit(t, BTN.save)) act = 'save';
+        if (hit(t, ui.canSave ? BTN.again : BTN.againSolo)) act = 'again';
+      }
+      if (act === 'again') reset('playing');
+      if (act === 'save') { g.mode = 'naming'; ui.entry = createNameEntry(board.lastName()); }
+    } else if (g.mode === 'naming') {
+      if (input.back && !ui.entry.name) { g.mode = 'over'; return; }
+      if (handleNameInput(ui.entry, input) === 'done') {
+        ui.board = board.add(ui.entry.name, Math.floor(g.s / 10));
+        g.mode = 'board';
+        ui.enteredAt = g.time;
+      }
+    } else if (g.mode === 'board' && g.time - ui.enteredAt > 0.4) {
+      if (input.confirm || input.taps.some((t) => hit(t, BTN.boardAgain))) reset('playing');
+    }
   }
 
   function spawnRow() {
@@ -186,10 +256,7 @@ export function createGame(canvas) {
 
   function update(dt, input) {
     g.time += dt;
-    if (g.mode !== 'playing') {
-      if (input.start && (g.mode === 'ready' || g.time - g.crashedAt > 0.6)) reset('playing');
-      return;
-    }
+    if (g.mode !== 'playing') { updateMenus(input); return; }
     if (input.left) g.lane = Math.max(LANES[0], g.lane - 1);
     if (input.right) g.lane = Math.min(LANES.at(-1), g.lane + 1);
     const target = g.lane * LANE_W;
@@ -211,9 +278,8 @@ export function createGame(canvas) {
 
     for (const c of g.traffic) {
       if (Math.abs(c.s - g.s) < CAR_L * 0.9 && Math.abs(c.lat - g.lat) < CAR_W * 0.95) {
-        g.mode = 'crashed';
-        g.crashedAt = g.time;
-        best = Math.max(best, Math.floor(g.s / 10));
+        gameOver();
+        break;
       }
     }
   }
@@ -277,7 +343,7 @@ export function createGame(canvas) {
 
     for (const c of g.traffic) drawCar(g.track.pose(c.s, c.lat), c.color);
     const yaw = Math.max(-0.35, Math.min(0.35, ((g.lane * LANE_W - g.lat) / LANE_W) * 0.35));
-    drawCar(me, g.mode === 'crashed' ? '#7a1010' : '#d32f2f', yaw, true);
+    drawCar(me, g.mode === 'playing' || g.mode === 'ready' ? '#d32f2f' : '#7a1010', yaw, true);
 
     // HUD
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -288,7 +354,7 @@ export function createGame(canvas) {
     ctx.textAlign = 'left';
     ctx.fillText(`${Math.floor(g.s / 10)} m`, 18, 38);
     ctx.textAlign = 'center';
-    ctx.fillText(`BEST ${best}`, W / 2, 38);
+    ctx.fillText(`BEST ${Math.max(best, topScore())}`, W / 2, 38);
     ctx.textAlign = 'right';
     ctx.fillText(`${Math.round(g.speed * 0.3)} km/h`, W - 18, 38);
 
@@ -308,15 +374,68 @@ export function createGame(canvas) {
       lines.forEach((l, i) => ctx.fillText(l, 10, H - 66 + i * 26));
     }
 
-    if (g.mode !== 'playing') {
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      ctx.fillRect(0, 80, W, 110);
-      ctx.fillStyle = '#fff';
-      ctx.textAlign = 'center';
-      ctx.font = 'bold 48px system-ui, sans-serif';
-      ctx.fillText(g.mode === 'ready' ? 'LANE RACER' : 'CRASHED', W / 2, 132);
-      ctx.font = '26px system-ui, sans-serif';
-      ctx.fillText('thumb/D-pad to ' + (g.mode === 'ready' ? 'start' : 'restart') + ' · paddles or D-pad change lanes', W / 2, 172);
+    if (g.mode !== 'playing') drawMenus();
+  }
+
+  function drawButton(b, selected) {
+    ctx.fillStyle = selected ? '#ffd54a' : '#2a3140';
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.strokeStyle = '#ffd54a';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(b.x + 1.5, b.y + 1.5, b.w - 3, b.h - 3);
+    ctx.fillStyle = selected ? '#111' : '#fff';
+    ctx.font = 'bold 30px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(b.label, b.x + b.w / 2, b.y + b.h / 2 + 11);
+  }
+
+  function drawScores(list, x, y, from, count, highlight) {
+    ctx.font = 'bold 28px ui-monospace, monospace';
+    for (let i = from; i < Math.min(list.length, from + count); i++) {
+      const e = list[i];
+      ctx.fillStyle = i === highlight ? '#ffd54a' : '#e8e8e8';
+      ctx.textAlign = 'left';
+      ctx.fillText(`${String(i + 1).padStart(2)}. ${e.name}`, x, y + (i - from) * 40);
+      ctx.textAlign = 'right';
+      ctx.fillText(`${e.score}`, x + 320, y + (i - from) * 40);
+    }
+  }
+
+  function drawMenus() {
+    ctx.textAlign = 'center';
+    if (g.mode === 'naming') { drawNameEntry(ctx, ui.entry, W, H, performance.now()); return; }
+    ctx.fillStyle = 'rgba(0,0,0,0.72)';
+    ctx.fillRect(0, 52, W, H - 52);
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    if (g.mode === 'ready') {
+      ctx.font = 'bold 52px system-ui, sans-serif';
+      ctx.fillText('LANE RACER', W / 2, 112);
+      const list = board.load();
+      if (list.length) drawScores(list, 230, 160, 0, 5, -1);
+      else { ctx.font = '26px system-ui, sans-serif'; ctx.fillText('no scores yet', W / 2, 230); }
+      drawButton(BTN.start, true);
+    } else if (g.mode === 'over') {
+      ctx.font = 'bold 52px system-ui, sans-serif';
+      ctx.fillText('CRASHED', W / 2, 130);
+      ctx.font = 'bold 40px system-ui, sans-serif';
+      ctx.fillStyle = '#ffd54a';
+      ctx.fillText(`${Math.floor(g.s / 10)} m`, W / 2, 190);
+      ctx.fillStyle = '#ccc';
+      ctx.font = '24px system-ui, sans-serif';
+      ctx.fillText(ui.canSave ? 'top 10 run — save it?' : 'not a top 10 run', W / 2, 240);
+      if (ui.canSave) { drawButton(BTN.save, ui.choice === 0); drawButton(BTN.again, ui.choice === 1); }
+      else drawButton(BTN.againSolo, true);
+      ctx.fillStyle = '#9aa3b2';
+      ctx.font = '20px system-ui, sans-serif';
+      ctx.fillText('tap a button · or D-pad to choose, pull right clutch to confirm', W / 2, H - 20);
+    } else if (g.mode === 'board') {
+      ctx.font = 'bold 40px system-ui, sans-serif';
+      ctx.fillText('LEADERBOARD', W / 2, 100);
+      const { list, index } = ui.board;
+      drawScores(list, 40, 150, 0, 5, index);
+      drawScores(list, 420, 150, 5, 5, index);
+      drawButton(BTN.boardAgain, true);
     }
   }
 
@@ -330,7 +449,8 @@ export function createGame(canvas) {
   }
   requestAnimationFrame(frame);
 
-  return { state: g, reset };
+  // step(dt) advances one frame by hand — for scripted tests while the tab is hidden.
+  return { state: g, reset, tap: (p) => taps.push(p), step: (dt = 1 / 60) => { update(dt, readInput()); render(); } };
 }
 
 // Wheel LED frame for the current game state (layout in wheelleds.js): the top bar
