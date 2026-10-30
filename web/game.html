@@ -25,7 +25,7 @@
   <div id="log"></div>
 <script type="module">
 import { createGame, ledFrame } from './game.js';
-import { WheelLeds, WHEEL_VID } from './wheelleds.js';
+import { WheelLeds, openLink } from './wheelleds.js';
 import { createScreen } from './screen.js';
 import { startBridge, bridgeLog } from './bridge.js';
 
@@ -51,37 +51,16 @@ $('connect').onclick = () => screen.connect().catch((e) => log('connect failed:'
 
 // Wheel LEDs: Web Serial on desktop, WebUSB on Android. Granted devices reopen on load.
 let leds = null;
-async function openLeds(open) {
+async function connectLeds(gesture) {
   try {
-    leds = await open();
+    const link = await openLink({ gesture });
+    if (!link) return;
+    leds = new WheelLeds(link, log);
     st.leds = 'leds: on'; showStatus();
-  } catch (e) { log('leds open failed:', e.message); st.leds = 'leds: failed'; showStatus(); }
+  } catch (e) { log('leds failed:', e.message); st.leds = 'leds: failed'; showStatus(); }
 }
-if (navigator.serial) {
-  navigator.serial.getPorts().then((ps) => {
-    const p = ps.find((x) => x.getInfo().usbVendorId === WHEEL_VID);
-    if (p) openLeds(() => WheelLeds.openSerial(p, log));
-  });
-  $('connectLeds').onclick = async () => {
-    try {
-      const p = await navigator.serial.requestPort({ filters: [{ usbVendorId: WHEEL_VID }] });
-      await openLeds(() => WheelLeds.openSerial(p, log));
-    } catch (e) { log('leds connect failed:', e.message); }
-  };
-} else if (navigator.usb) {
-  navigator.usb.getDevices().then((ds) => {
-    const d = ds.find((x) => x.vendorId === WHEEL_VID);
-    if (d) openLeds(() => WheelLeds.openUsb(d, log));
-  });
-  $('connectLeds').onclick = async () => {
-    try {
-      const d = await navigator.usb.requestDevice({ filters: [{ vendorId: WHEEL_VID }] });
-      await openLeds(() => WheelLeds.openUsb(d, log));
-    } catch (e) { log('leds connect failed:', e.message); }
-  };
-} else {
-  $('connectLeds').disabled = true; st.leds = 'leds: unsupported'; showStatus();
-}
+$('connectLeds').onclick = () => connectLeds(true);
+connectLeds(false);
 setInterval(() => { if (leds && !leds.closed) leds.set(ledFrame(game.state)); }, 50);
 
 startBridge(() => ({ game, screen, canvas, log, get leds() { return leds; } }), (s) => { st.bridge = s; showStatus(); });
