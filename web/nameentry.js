@@ -1,67 +1,71 @@
-// On-screen name keyboard for the wheel screen. Works with taps (touchscreen),
+// On-screen QWERTY name keyboard for the wheel screen. Works with taps (touchscreen),
 // D-pad navigation + confirm/back, and a physical keyboard.
 
 export const MAX_NAME = 10;
-const ROWS = ['ABCDEFGHIJ', 'KLMNOPQRST', 'UVWXYZ0123', '456789-.!?'];
-const SPECIAL = [
-  { label: '⌫', act: 'del', cols: [0, 1, 2] },
-  { label: 'SPACE', act: 'space', cols: [3, 4, 5, 6] },
-  { label: 'DONE', act: 'done', cols: [7, 8, 9] },
+const UNIT = 72, KEY_H = 56, X0 = 40, Y0 = 132;
+
+// Rows of [label/char, width in key units]; `offset` staggers the row like a real keyboard.
+const LAYOUT = [
+  { offset: 0, keys: [...'1234567890'] },
+  { offset: 0, keys: [...'QWERTYUIOP'] },
+  { offset: 0.5, keys: [...'ASDFGHJKL'] },
+  { offset: 1.5, keys: [...'ZXCVBNM'] },
+  { offset: 0, keys: [{ label: '⌫', act: 'del', w: 2.5 }, { label: 'SPACE', act: 'space', w: 4.5 }, { label: 'DONE', act: 'done', w: 3 }] },
 ];
-const KEY_W = 72, KEY_H = 56, X0 = 40, Y0 = 132;
-const ALLOWED = new Set([...ROWS.join(''), ' ']);
+const KEYS = LAYOUT.map(({ offset, keys }, row) => {
+  let x = offset;
+  return keys.map((k) => {
+    const key = typeof k === 'string' ? { char: k, label: k, w: 1 } : { ...k };
+    Object.assign(key, { row, x: X0 + x * UNIT, y: Y0 + row * KEY_H, w: key.w * UNIT });
+    x += key.w / UNIT;
+    return key;
+  });
+});
+const ALLOWED = new Set([...'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-.!? ']);
+const center = (k) => k.x + k.w / 2;
 
 export function createNameEntry(initial = '') {
-  return { name: initial.toUpperCase().slice(0, MAX_NAME), row: 0, col: 0 };
+  return { name: initial.toUpperCase().slice(0, MAX_NAME), row: 1, i: 0 }; // start on Q
 }
 
-function keyAt(row, col) {
-  if (row < ROWS.length) return { char: ROWS[row][col], x: X0 + col * KEY_W, y: Y0 + row * KEY_H, w: KEY_W };
-  const s = SPECIAL.find((k) => k.cols.includes(col));
-  return { act: s.act, label: s.label, x: X0 + s.cols[0] * KEY_W, y: Y0 + row * KEY_H, w: s.cols.length * KEY_W };
-}
-
-function allKeys() {
-  const keys = [];
-  ROWS.forEach((r, row) => [...r].forEach((_, col) => keys.push({ ...keyAt(row, col), row, col })));
-  SPECIAL.forEach((s) => keys.push({ ...keyAt(ROWS.length, s.cols[0]), row: ROWS.length, col: s.cols[0] }));
-  return keys;
+function append(e, c) {
+  if (e.name.length >= MAX_NAME) return;
+  if (c === ' ' && (!e.name || e.name.endsWith(' '))) return;
+  e.name += c;
 }
 
 function activate(e, key) {
-  if (key.char) { if (e.name.length < MAX_NAME) e.name += key.char; return null; }
-  if (key.act === 'del') { e.name = e.name.slice(0, -1); return null; }
-  if (key.act === 'space') { if (e.name.length < MAX_NAME && e.name && !e.name.endsWith(' ')) e.name += ' '; return null; }
-  if (key.act === 'done') return e.name.trim() ? 'done' : null;
+  if (key.char) append(e, key.char);
+  else if (key.act === 'del') e.name = e.name.slice(0, -1);
+  else if (key.act === 'space') append(e, ' ');
+  else if (key.act === 'done') return e.name.trim() ? 'done' : null;
   return null;
 }
 
 // input: { left, right, up, down, confirmPad, back, taps: [{x,y}], chars: [], enter, backspace }
 // Returns 'done' when the name is submitted, else null.
 export function handleNameInput(e, input) {
-  const lastRow = ROWS.length;
-  const step = (input.right ? 1 : 0) - (input.left ? 1 : 0);
-  if (step && e.row === lastRow) {
-    // The bottom row has three wide keys: left/right step between them.
-    const i = SPECIAL.findIndex((s) => s.cols.includes(e.col));
-    e.col = SPECIAL[(i + step + 3) % 3].cols[0];
-  } else if (step) {
-    e.col = (e.col + step + 10) % 10;
+  const row = KEYS[e.row];
+  if (input.left) e.i = (e.i + row.length - 1) % row.length;
+  if (input.right) e.i = (e.i + 1) % row.length;
+  if (input.up || input.down) {
+    // Move to the key in the next row whose centre is nearest the current one.
+    const x = center(KEYS[e.row][e.i]);
+    e.row = (e.row + (input.down ? 1 : KEYS.length - 1)) % KEYS.length;
+    const next = KEYS[e.row];
+    e.i = next.reduce((best, k, j) => (Math.abs(center(k) - x) < Math.abs(center(next[best]) - x) ? j : best), 0);
   }
-  if (input.up) e.row = (e.row + lastRow) % (lastRow + 1);
-  if (input.down) e.row = (e.row + 1) % (lastRow + 1);
 
   let result = null;
   for (const t of input.taps) {
-    const key = allKeys().find((k) => t.x >= k.x && t.x < k.x + k.w && t.y >= k.y && t.y < k.y + KEY_H);
-    if (key) { e.row = key.row; e.col = key.col; result = activate(e, key) || result; }
+    for (const r of KEYS) {
+      const j = r.findIndex((k) => t.x >= k.x && t.x < k.x + k.w && t.y >= k.y && t.y < k.y + KEY_H);
+      if (j >= 0) { e.row = r[0].row; e.i = j; result = activate(e, r[j]) || result; }
+    }
   }
-  if (input.confirmPad) result = activate(e, keyAt(e.row, e.col)) || result;
+  if (input.confirmPad) result = activate(e, KEYS[e.row][e.i]) || result;
   if (input.back || input.backspace) e.name = e.name.slice(0, -1);
-  for (const ch of input.chars) {
-    const c = ch.toUpperCase();
-    if (ALLOWED.has(c) && e.name.length < MAX_NAME && !(c === ' ' && (!e.name || e.name.endsWith(' ')))) e.name += c;
-  }
+  for (const ch of input.chars) { const c = ch.toUpperCase(); if (ALLOWED.has(c)) append(e, c); }
   if (input.enter && e.name.trim()) result = 'done';
   return result;
 }
@@ -75,20 +79,20 @@ export function drawNameEntry(ctx, e, W, H, now) {
   ctx.fillText('ENTER YOUR NAME', W / 2, 40);
 
   ctx.fillStyle = '#1e2430';
-  ctx.fillRect(X0, 56, 10 * KEY_W, 62);
+  ctx.fillRect(X0, 56, 10 * UNIT, 62);
   ctx.fillStyle = '#ffd54a';
   ctx.font = 'bold 44px ui-monospace, monospace';
   const caret = Math.floor(now / 500) % 2 && e.name.length < MAX_NAME ? '_' : ' ';
   ctx.fillText(e.name + caret, W / 2, 102);
 
   ctx.font = 'bold 28px system-ui, sans-serif';
-  for (const k of allKeys()) {
-    const sel = k.row === e.row && (k.char ? k.col === e.col : SPECIAL.find((s) => s.act === k.act).cols.includes(e.col));
+  KEYS.forEach((r, row) => r.forEach((k, i) => {
+    const sel = row === e.row && i === e.i;
     ctx.fillStyle = sel ? '#ffd54a' : k.act === 'done' ? '#2e7d32' : '#2a3140';
     ctx.fillRect(k.x + 3, k.y + 3, k.w - 6, KEY_H - 6);
     ctx.fillStyle = sel ? '#111' : '#eee';
-    ctx.fillText(k.char || k.label, k.x + k.w / 2, k.y + KEY_H / 2 + 10);
-  }
+    ctx.fillText(k.label, k.x + k.w / 2, k.y + KEY_H / 2 + 10);
+  }));
   ctx.fillStyle = '#9aa3b2';
   ctx.font = '20px system-ui, sans-serif';
   ctx.fillText('tap keys · D-pad + right clutch to type · left clutch deletes', W / 2, H - 14);
