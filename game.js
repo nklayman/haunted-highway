@@ -1,9 +1,9 @@
 // Lane-runner prototype: the car auto-steers along an endless winding road and
 // stays fixed on screen while the world rotates around it. Paddles hop lanes
 // to dodge rows of traffic; clutches boost/brake; thumbs start/restart.
-import { createWheelInput } from './input.js?v=caa7c7d';
-import * as board from './leaderboard.js?v=caa7c7d';
-import { createNameEntry, handleNameInput, drawNameEntry } from './nameentry.js?v=caa7c7d';
+import { createWheelInput } from './input.js?v=b4444db';
+import * as board from './leaderboard.js?v=b4444db';
+import { createNameEntry, handleNameInput, drawNameEntry } from './nameentry.js?v=b4444db';
 
 export const W = 800, H = 480;
 
@@ -185,8 +185,9 @@ export function createGame(canvas) {
       backspace: kp('Backspace'),
       chars: typed.splice(0),
       taps: taps.splice(0),
-      boost: Math.max(w.rightClutch, keys.has('ArrowUp') ? 1 : 0),
-      brake: Math.max(w.leftClutch, keys.has('ArrowDown') ? 1 : 0),
+      // Held D-pad up/down (or arrow keys) = full boost/brake, alongside the analog clutches.
+      boost: Math.max(w.rightClutch, w.dpadUp || keys.has('ArrowUp') ? 1 : 0),
+      brake: Math.max(w.leftClutch, w.dpadDown || keys.has('ArrowDown') ? 1 : 0),
       wheel: w.connected,
     };
     input.confirm = input.confirmPad || input.confirmKey;
