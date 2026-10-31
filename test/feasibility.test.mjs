@@ -8,13 +8,13 @@ Object.assign(globalThis, { localStorage: { getItem: () => null, setItem: noop, 
 const { planRow, SEE_AHEAD, LANE_W, CAR_L, CAR_W, LANE_SPEED, REACTION, MIN_ROW_GAP, ROW_GAP_RANDOM, TRAFFIC_V } = await import('../web/game.js');
 
 let runs = 0, crashes = 0, rows = 0;
-for (const speed of [260, 400, 550, 700, 800]) {
+for (const [speed, distM] of [[260, 0], [400, 300], [550, 900], [700, 1600], [800, 2500]]) {
   const closing = speed - TRAFFIC_V;
   for (let run = 0; run < 300; run++, runs++) {
     const plan = [];
     let path = 0, lastEnd = 0, at = 800;
     for (let i = 0; i < 60; i++) {
-      const r = planRow(path, at - lastEnd, closing, 0);
+      const r = planRow(path, at - lastEnd, closing, distM);
       plan.push({ at, end: at + r.length, path: r.pathLane, cars: r.cars.map((c) => ({ s: at + c.off, lat: c.lane * LANE_W })) });
       path = r.pathLane; lastEnd = at + r.length; at = lastEnd + MIN_ROW_GAP + Math.random() * ROW_GAP_RANDOM;
     }
