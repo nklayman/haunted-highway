@@ -22,7 +22,8 @@ const HUD_H = 52;
 const CAR_Y = Math.round(H * 0.85);          // car's fixed screen position; low so you can see ahead
 export const SEE_AHEAD = CAR_Y - HUD_H - CAR_L / 2; // road visible ahead of the car's nose
 export const REACTION = 0.2;                         // seconds allowed to spot a row and react
-export const MIN_ROW_GAP = CAR_L * 4;                // last car of one row to first of the next
+export const MIN_ROW_GAP = CAR_L * 4;
+const FIRST_ROW_AT = 520;                // last car of one row to first of the next
 export const ROW_GAP_RANDOM = 300;                   // plus up to this much extra
 const ROW_STAGGER = CAR_L * 2;                // cars in a row are spread over this much road
 const baseSpeed = (s) => Math.min(800, 260 + s * 0.025);
@@ -133,12 +134,17 @@ export function carsInRow(distM, rnd = Math.random) {
 
 // `gap` runs from the previous row's last car to this row's start. Cars are
 // staggered by `off` (0..ROW_STAGGER) past the start; `length` is the row's extent.
-export function planRow(prevPath, gap, closing, distM, rnd = Math.random) {
+export function planRow(prevPath, gap, closing, distM, rnd = Math.random, first = false) {
   const k = reachableShift(gap, closing);
-  const options = LANES.filter((l) => Math.abs(l - prevPath) <= k);
+  // Usually make the player move: when the path can shift, move it and block the lane
+  // it was in (where a player following it will be). Strongly at the start so the
+  // opening rows can't be ignored; half the time later on.
+  const forceMove = k >= 1 && (first || rnd() < (distM < 300 ? 0.9 : 0.5));
+  const options = LANES.filter((l) => Math.abs(l - prevPath) <= k && !(forceMove && l === prevPath));
   const pathLane = options[Math.floor(rnd() * options.length)];
   const count = Math.min(carsInRow(distM, rnd), LANE_COUNT - 1);
-  const lanes = LANES.filter((l) => l !== pathLane).sort(() => rnd() - 0.5).slice(0, count);
+  const others = LANES.filter((l) => l !== pathLane && !(forceMove && l === prevPath)).sort(() => rnd() - 0.5);
+  const lanes = (forceMove ? [prevPath, ...others] : others).slice(0, count);
   const cars = lanes.map((lane) => ({ lane, off: rnd() * ROW_STAGGER }));
   const length = Math.max(0, ...cars.map((c) => c.off));
   return { pathLane, cars, length, k };
@@ -165,7 +171,8 @@ export function createGame(canvas) {
     Object.assign(g, {
       mode, track: new Track(), s: 0, lane: 0, lat: 0, speed: 260,
       brakeEnergy: BRAKE_START, braking: 0,
-      traffic: [], nextRowAt: 800, lastRowEnd: 0, pathLane: 0, crashedAt: 0, time: 0,
+      // First row starts just past the top of the screen and always blocks the start lane.
+      traffic: [], nextRowAt: FIRST_ROW_AT, lastRowEnd: 0, pathLane: 0, firstRow: true, crashedAt: 0, time: 0,
     });
     g.track.extendTo(VIEW_AHEAD + 200);
   }
@@ -262,7 +269,8 @@ export function createGame(canvas) {
     const rowS = g.nextRowAt;
     const meetAt = rowS + ((rowS - g.s) * TRAFFIC_V) / Math.max(80, g.speed - TRAFFIC_V);
     const closing = baseSpeed(meetAt) - TRAFFIC_V;
-    const row = planRow(g.pathLane, rowS - g.lastRowEnd, closing, meetAt / 10);
+    const row = planRow(g.pathLane, rowS - g.lastRowEnd, closing, meetAt / 10, Math.random, g.firstRow);
+    g.firstRow = false;
     for (const c of row.cars) {
       const color = TRAFFIC_COLORS[Math.floor(Math.random() * TRAFFIC_COLORS.length)];
       g.traffic.push({ s: rowS + c.off, lat: c.lane * LANE_W, color });
