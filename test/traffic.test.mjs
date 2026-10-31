@@ -4,7 +4,7 @@
 //   node test/traffic.test.mjs
 const noop = () => {};
 const ctxStub = new Proxy({}, {
-  get: (t, k) => (k in t ? t[k] : k === 'createLinearGradient' ? () => ({ addColorStop: noop }) : noop),
+  get: (t, k) => (k in t ? t[k] : k === 'createLinearGradient' || k === 'createRadialGradient' ? () => ({ addColorStop: noop }) : noop),
   set: (t, k, v) => ((t[k] = v), true),
 });
 Object.assign(globalThis, {

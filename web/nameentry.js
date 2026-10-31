@@ -71,16 +71,16 @@ export function handleNameInput(e, input) {
 }
 
 export function drawNameEntry(ctx, e, W, H, now) {
-  ctx.fillStyle = 'rgba(10,12,18,0.94)';
+  ctx.fillStyle = 'rgba(14,6,22,0.95)';
   ctx.fillRect(0, 0, W, H);
   ctx.textAlign = 'center';
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 30px system-ui, sans-serif';
   ctx.fillText('ENTER YOUR NAME', W / 2, 40);
 
-  ctx.fillStyle = '#1e2430';
+  ctx.fillStyle = '#1a0f26';
   ctx.fillRect(X0, 56, 10 * UNIT, 62);
-  ctx.fillStyle = '#ffd54a';
+  ctx.fillStyle = '#ff7a00';
   ctx.font = 'bold 44px ui-monospace, monospace';
   const caret = Math.floor(now / 500) % 2 && e.name.length < MAX_NAME ? '_' : ' ';
   ctx.fillText(e.name + caret, W / 2, 102);
@@ -88,7 +88,7 @@ export function drawNameEntry(ctx, e, W, H, now) {
   ctx.font = 'bold 28px system-ui, sans-serif';
   KEYS.forEach((r, row) => r.forEach((k, i) => {
     const sel = row === e.row && i === e.i;
-    ctx.fillStyle = sel ? '#ffd54a' : k.act === 'done' ? '#2e7d32' : '#2a3140';
+    ctx.fillStyle = sel ? '#ff7a00' : k.act === 'done' ? '#3d6b1f' : '#2d1b3d';
     ctx.fillRect(k.x + 3, k.y + 3, k.w - 6, KEY_H - 6);
     ctx.fillStyle = sel ? '#111' : '#eee';
     ctx.fillText(k.label, k.x + k.w / 2, k.y + KEY_H / 2 + 10);

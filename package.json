@@ -7,7 +7,8 @@
     "test": "node test/feasibility.test.mjs && node test/traffic.test.mjs",
     "bridge": "node server.mjs",
     "bridge:lan": "HOST=0.0.0.0 node server.mjs",
-    "deploy": "node scripts/deploy.mjs --push"
+    "deploy": "node scripts/deploy.mjs --push",
+    "preview": "node test/render-preview.mjs"
   },
   "keywords": [],
   "author": "",
@@ -15,5 +16,8 @@
   "type": "module",
   "dependencies": {
     "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@napi-rs/canvas": "^1.1.0"
   }
 }
