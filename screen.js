@@ -1,7 +1,7 @@
 // Mirrors a canvas onto the wheel screen: handles connect/reconnect and streams
 // frames back-to-back (each send starts as soon as the previous transfer ends).
 // Also reads the touchscreen and reports new presses via onTap({x, y}) in canvas coords.
-import * as vc from './vocore.js?v=b4444db';
+import * as vc from './vocore.js?v=5525e09';
 
 export function createScreen(canvas, { onStatus = () => {}, log = console.log, onTap = () => {} } = {}) {
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
