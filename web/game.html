@@ -12,6 +12,12 @@
   #status { font-size: 14px; color: #aaa; }
   canvas { width: 100%; max-width: 800px; background: #000; border: 1px solid #444; display: block; }
   #log { white-space: pre-wrap; font: 12px ui-monospace, monospace; background: #000; padding: 8px; max-height: 140px; overflow: auto; }
+  #lockOverlay { position: fixed; inset: 0; background: #000; z-index: 10; display: none;
+    touch-action: none; user-select: none; -webkit-user-select: none; flex-direction: column;
+    align-items: center; justify-content: center; gap: 20px; color: #444; font-size: 15px; text-align: center; }
+  #lockOverlay.on { display: flex; }
+  #unlock { width: 120px; height: 120px; border-radius: 50%; border: 2px solid #333; display: grid;
+    place-items: center; font-size: 44px; background: conic-gradient(#2e7d32 var(--p, 0%), #111 0); }
 </style>
 <script>
   // Plain script so it runs even if the module below fails to load: show any error on screen.
@@ -27,11 +33,16 @@
   <div class="row">
     <button id="connect">Connect screen</button>
     <button id="connectLeds">Connect LEDs</button>
+    <button id="lock">🔒 Lock touch</button>
     <span id="status"></span>
   </div>
   <canvas id="canvas" width="800" height="480"></canvas>
   <p>Paddles or D-pad change lanes · right clutch boost (charges brakes) · left clutch brake (uses brake meter on the LEDs). Menus: tap the wheel screen, or D-pad + right clutch to confirm, left clutch to go back. Keyboard: arrows, Enter, typing.</p>
   <div id="log"></div>
+  <div id="lockOverlay">
+    <div id="unlock">🔒</div>
+    <div>Touch locked · press and hold the lock for 3 s to unlock<br>Wheel controls and the wheel's touchscreen still work</div>
+  </div>
 <script type="module">
 import { createGame, ledFrame } from './game.js';
 import { WheelLeds, openLink } from './wheelleds.js';
@@ -76,6 +87,48 @@ async function connectLeds(gesture) {
 $('connectLeds').onclick = () => connectLeds(true);
 connectLeds(false);
 setInterval(() => { if (leds && !leds.closed) leds.set(ledFrame(game.state)); }, 50);
+
+// Touch lock for pocketing the phone: a black overlay swallows every touch; holding
+// the lock for 3 s unlocks. A screen wake lock keeps the page (and game) running —
+// if the phone's screen turns off, Chrome pauses the page and the wheel screen freezes.
+let wakeLock = null;
+async function keepAwake() {
+  if (!('wakeLock' in navigator) || document.hidden || wakeLock) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => { wakeLock = null; });
+  } catch (e) { log('wake lock failed:', e.message); }
+}
+keepAwake();
+document.addEventListener('visibilitychange', keepAwake);
+
+const overlay = $('lockOverlay'), unlockEl = $('unlock');
+const swallow = (e) => { e.preventDefault(); e.stopPropagation(); };
+for (const type of ['touchstart', 'touchmove', 'touchend', 'pointerdown', 'pointerup', 'click', 'contextmenu', 'wheel']) {
+  overlay.addEventListener(type, swallow, { passive: false });
+}
+$('lock').onclick = async () => {
+  overlay.classList.add('on');
+  keepAwake();
+  try { await document.documentElement.requestFullscreen?.({ navigationUI: 'hide' }); } catch {}
+};
+let holdStart = 0, holdTimer = 0;
+function endHold() { clearInterval(holdTimer); holdTimer = 0; unlockEl.style.setProperty('--p', '0%'); }
+unlockEl.addEventListener('pointerdown', (e) => {
+  swallow(e);
+  holdStart = performance.now();
+  clearInterval(holdTimer);
+  holdTimer = setInterval(() => {
+    const p = Math.min(1, (performance.now() - holdStart) / 3000);
+    unlockEl.style.setProperty('--p', `${p * 100}%`);
+    if (p >= 1) {
+      endHold();
+      overlay.classList.remove('on');
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    }
+  }, 50);
+}, { passive: false });
+for (const type of ['pointerup', 'pointercancel', 'pointerleave']) unlockEl.addEventListener(type, endHold);
 
 startBridge(() => ({ game, screen, canvas, log, get leds() { return leds; } }), (s) => { st.bridge = s; showStatus(); });
 window.rw = { game, screen, get leds() { return leds; } };
