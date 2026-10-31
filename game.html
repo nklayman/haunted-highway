@@ -34,6 +34,7 @@
     <button id="connect">Connect screen</button>
     <button id="connectLeds">Connect LEDs</button>
     <button id="lock">🔒 Lock touch</button>
+    <button id="clearBoard">Clear leaderboard</button>
     <span id="status"></span>
   </div>
   <canvas id="canvas" width="800" height="480"></canvas>
@@ -44,10 +45,11 @@
     <div>Touch locked · press and hold the lock for 3 s to unlock<br>Wheel controls and the wheel's touchscreen still work</div>
   </div>
 <script type="module">
-import { createGame, ledFrame } from './game.js?v=cb76581';
-import { WheelLeds, openLink } from './wheelleds.js?v=cb76581';
-import { createScreen } from './screen.js?v=cb76581';
-import { startBridge, bridgeLog } from './bridge.js?v=cb76581';
+import { createGame, ledFrame } from './game.js?v=6bd7381';
+import { WheelLeds, openLink } from './wheelleds.js?v=6bd7381';
+import * as board from './leaderboard.js?v=6bd7381';
+import { createScreen } from './screen.js?v=6bd7381';
+import { startBridge, bridgeLog } from './bridge.js?v=6bd7381';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('canvas');
@@ -107,6 +109,15 @@ const swallow = (e) => { e.preventDefault(); e.stopPropagation(); };
 for (const type of ['touchstart', 'touchmove', 'touchend', 'pointerdown', 'pointerup', 'click', 'contextmenu', 'wheel']) {
   overlay.addEventListener(type, swallow, { passive: false });
 }
+$('clearBoard').onclick = () => {
+  const n = board.load().length;
+  if (!n) { alert('The leaderboard is already empty.'); return; }
+  if (confirm(`Clear all ${n} leaderboard ${n === 1 ? 'entry' : 'entries'} on this device? This can't be undone.`)) {
+    board.clear();
+    log('leaderboard cleared');
+  }
+};
+
 $('lock').onclick = async () => {
   overlay.classList.add('on');
   keepAwake();
