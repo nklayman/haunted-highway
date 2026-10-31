@@ -185,8 +185,9 @@ export function createGame(canvas) {
       backspace: kp('Backspace'),
       chars: typed.splice(0),
       taps: taps.splice(0),
-      boost: Math.max(w.rightClutch, keys.has('ArrowUp') ? 1 : 0),
-      brake: Math.max(w.leftClutch, keys.has('ArrowDown') ? 1 : 0),
+      // Held D-pad up/down (or arrow keys) = full boost/brake, alongside the analog clutches.
+      boost: Math.max(w.rightClutch, w.dpadUp || keys.has('ArrowUp') ? 1 : 0),
+      brake: Math.max(w.leftClutch, w.dpadDown || keys.has('ArrowDown') ? 1 : 0),
       wheel: w.connected,
     };
     input.confirm = input.confirmPad || input.confirmKey;
