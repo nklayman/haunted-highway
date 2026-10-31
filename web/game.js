@@ -194,7 +194,8 @@ export function createGame(canvas) {
       down: w.pressed.dpadDown || kp('ArrowDown'),
       // Menu confirm/back: right/left clutch pulls work everywhere; thumbs on desktop.
       confirmPad: clutchEdge('right', w.rightClutch) || w.pressed.leftThumb || w.pressed.rightThumb,
-      back: clutchEdge('left', w.leftClutch) || kp('Escape'),
+      back: clutchEdge('left', w.leftClutch),
+      cancel: kp('Escape'),
       confirmKey: kp('Enter') || kp('Space'),
       enter: kp('Enter'),
       backspace: kp('Backspace'),
@@ -243,8 +244,9 @@ export function createGame(canvas) {
       if (act === 'again') reset('playing');
       if (act === 'save') { g.mode = 'naming'; ui.entry = createNameEntry(); }
     } else if (g.mode === 'naming') {
-      if (input.back && !ui.entry.name) { g.mode = 'over'; return; }
-      if (handleNameInput(ui.entry, input) === 'done') {
+      const result = handleNameInput(ui.entry, input);
+      if (result === 'cancel') { g.mode = 'over'; g.crashedAt = g.time; return; }
+      if (result === 'done') {
         ui.board = board.add(ui.entry.name, Math.floor(g.s / 10));
         g.mode = 'board';
         ui.enteredAt = g.time;
