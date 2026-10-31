@@ -1,9 +1,9 @@
 // Lane-runner prototype: the car auto-steers along an endless winding road and
 // stays fixed on screen while the world rotates around it. Paddles hop lanes
 // to dodge rows of traffic; clutches boost/brake; thumbs start/restart.
-import { createWheelInput } from './input.js?v=6bd7381';
-import * as board from './leaderboard.js?v=6bd7381';
-import { createNameEntry, handleNameInput, drawNameEntry } from './nameentry.js?v=6bd7381';
+import { createWheelInput } from './input.js?v=32a3120';
+import * as board from './leaderboard.js?v=32a3120';
+import { createNameEntry, handleNameInput, drawNameEntry } from './nameentry.js?v=32a3120';
 
 export const W = 800, H = 480;
 
@@ -194,7 +194,8 @@ export function createGame(canvas) {
       down: w.pressed.dpadDown || kp('ArrowDown'),
       // Menu confirm/back: right/left clutch pulls work everywhere; thumbs on desktop.
       confirmPad: clutchEdge('right', w.rightClutch) || w.pressed.leftThumb || w.pressed.rightThumb,
-      back: clutchEdge('left', w.leftClutch) || kp('Escape'),
+      back: clutchEdge('left', w.leftClutch),
+      cancel: kp('Escape'),
       confirmKey: kp('Enter') || kp('Space'),
       enter: kp('Enter'),
       backspace: kp('Backspace'),
@@ -243,8 +244,9 @@ export function createGame(canvas) {
       if (act === 'again') reset('playing');
       if (act === 'save') { g.mode = 'naming'; ui.entry = createNameEntry(); }
     } else if (g.mode === 'naming') {
-      if (input.back && !ui.entry.name) { g.mode = 'over'; return; }
-      if (handleNameInput(ui.entry, input) === 'done') {
+      const result = handleNameInput(ui.entry, input);
+      if (result === 'cancel') { g.mode = 'over'; g.crashedAt = g.time; return; }
+      if (result === 'done') {
         ui.board = board.add(ui.entry.name, Math.floor(g.s / 10));
         g.mode = 'board';
         ui.enteredAt = g.time;

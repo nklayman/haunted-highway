@@ -10,7 +10,7 @@ const LAYOUT = [
   { offset: 0, keys: [...'QWERTYUIOP'] },
   { offset: 0.5, keys: [...'ASDFGHJKL'] },
   { offset: 1.5, keys: [...'ZXCVBNM'] },
-  { offset: 0, keys: [{ label: '⌫', act: 'del', w: 2.5 }, { label: 'SPACE', act: 'space', w: 4.5 }, { label: 'DONE', act: 'done', w: 3 }] },
+  { offset: 0, keys: [{ label: '⌫', act: 'del', w: 2 }, { label: 'SPACE', act: 'space', w: 3.5 }, { label: 'CANCEL', act: 'cancel', w: 2.25 }, { label: 'DONE', act: 'done', w: 2.25 }] },
 ];
 const KEYS = LAYOUT.map(({ offset, keys }, row) => {
   let x = offset;
@@ -39,11 +39,12 @@ function activate(e, key) {
   else if (key.act === 'del') e.name = e.name.slice(0, -1);
   else if (key.act === 'space') append(e, ' ');
   else if (key.act === 'done') return e.name.trim() ? 'done' : null;
+  else if (key.act === 'cancel') return 'cancel';
   return null;
 }
 
 // input: { left, right, up, down, confirmPad, back, taps: [{x,y}], chars: [], enter, backspace }
-// Returns 'done' when the name is submitted, else null.
+// Returns 'done' when the name is submitted, 'cancel' to abandon saving, else null.
 export function handleNameInput(e, input) {
   const row = KEYS[e.row];
   if (input.left) e.i = (e.i + row.length - 1) % row.length;
@@ -64,6 +65,7 @@ export function handleNameInput(e, input) {
     }
   }
   if (input.confirmPad) result = activate(e, KEYS[e.row][e.i]) || result;
+  if (input.cancel || (input.back && !e.name)) return 'cancel';
   if (input.back || input.backspace) e.name = e.name.slice(0, -1);
   for (const ch of input.chars) { const c = ch.toUpperCase(); if (ALLOWED.has(c)) append(e, c); }
   if (input.enter && e.name.trim()) result = 'done';
@@ -88,12 +90,12 @@ export function drawNameEntry(ctx, e, W, H, now) {
   ctx.font = 'bold 28px system-ui, sans-serif';
   KEYS.forEach((r, row) => r.forEach((k, i) => {
     const sel = row === e.row && i === e.i;
-    ctx.fillStyle = sel ? '#ff7a00' : k.act === 'done' ? '#3d6b1f' : '#2d1b3d';
+    ctx.fillStyle = sel ? '#ff7a00' : k.act === 'done' ? '#3d6b1f' : k.act === 'cancel' ? '#5a1a22' : '#2d1b3d';
     ctx.fillRect(k.x + 3, k.y + 3, k.w - 6, KEY_H - 6);
     ctx.fillStyle = sel ? '#111' : '#eee';
     ctx.fillText(k.label, k.x + k.w / 2, k.y + KEY_H / 2 + 10);
   }));
   ctx.fillStyle = '#9aa3b2';
   ctx.font = '20px system-ui, sans-serif';
-  ctx.fillText('tap keys · D-pad + right clutch to type · left clutch deletes', W / 2, H - 14);
+  ctx.fillText('tap keys · D-pad + right clutch types · left clutch deletes', W / 2, H - 14);
 }
