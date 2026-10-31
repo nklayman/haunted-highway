@@ -1,9 +1,9 @@
 // Lane-runner prototype: the car auto-steers along an endless winding road and
 // stays fixed on screen while the world rotates around it. Paddles hop lanes
 // to dodge rows of traffic; clutches boost/brake; thumbs start/restart.
-import { createWheelInput } from './input.js?v=aca697f';
-import * as board from './leaderboard.js?v=aca697f';
-import { createNameEntry, handleNameInput, drawNameEntry } from './nameentry.js?v=aca697f';
+import { createWheelInput } from './input.js?v=cb76581';
+import * as board from './leaderboard.js?v=cb76581';
+import { createNameEntry, handleNameInput, drawNameEntry } from './nameentry.js?v=cb76581';
 
 export const W = 800, H = 480;
 
@@ -30,7 +30,12 @@ const baseSpeed = (s) => Math.min(800, 260 + s * 0.025);
 const BRAKE_START = 0.25;    // meter level at the start of a run
 const BRAKE_DRAIN_S = 2.5;   // seconds of full braking to empty a full meter
 const BRAKE_CHARGE_S = 4;    // seconds of full boost to fill an empty meter
-const TRAFFIC_COLORS = ['#e8b830', '#3a8ee8', '#e86a3a', '#9b59d0', '#e8e8e8'];
+// Halloween theme. Traffic is drawn as ghosts (same hitbox as a car).
+const TRAFFIC_COLORS = ['#f4f4ff', '#d9f4ff', '#ece0ff', '#e0ffe4'];
+const THEME = {
+  ground: '#1d1028', road: '#2b2833', kerb: '#111', kerbDash: '#ff7a00', laneDash: '#ff9a3c',
+  player: '#ff7a00', playerCrashed: '#6b2a00', accent: '#ff7a00', panel: '#2d1b3d',
+};
 
 const HEADING0 = -Math.PI / 2;               // the road's overall direction (up)
 const MAX_DEV = (65 * Math.PI) / 180;         // winding limit either side of HEADING0
@@ -68,7 +73,9 @@ export class Track {
       if (Math.random() < 0.18) {
         const side = Math.random() < 0.5 ? -1 : 1;
         const off = side * (ROAD_W / 2 + 40 + Math.random() * 260);
-        q.trees.push({ x: q.x - Math.sin(th) * off, y: q.y + Math.cos(th) * off, r: 14 + Math.random() * 16 });
+        const roll = Math.random();
+        const kind = roll < 0.45 ? 'tree' : roll < 0.75 ? 'pumpkin' : 'grave';
+        q.trees.push({ x: q.x - Math.sin(th) * off, y: q.y + Math.cos(th) * off, r: 14 + Math.random() * 16, kind, a: Math.random() * Math.PI * 2 });
       }
       this.pts.push(q);
     }
@@ -310,6 +317,98 @@ export function createGame(canvas) {
     ctx.stroke();
   }
 
+  // Roadside decor, drawn top-down in world space.
+  function drawDecor(t, now) {
+    ctx.save();
+    ctx.translate(t.x, t.y);
+    ctx.rotate(t.a);
+    if (t.kind === 'pumpkin') {
+      const r = t.r * 0.8;
+      ctx.fillStyle = 'rgba(255,140,0,0.18)'; // glow
+      ctx.beginPath(); ctx.arc(0, 0, r * 1.9, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#e86a00';
+      ctx.beginPath(); ctx.ellipse(0, 0, r * 1.15, r, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#b84d00'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.ellipse(0, 0, r * 0.45, r, 0, 0, Math.PI * 2); ctx.stroke();
+      const flicker = 0.75 + 0.25 * Math.sin(now / 90 + t.a * 10);
+      ctx.fillStyle = `rgba(255,230,120,${flicker})`; // carved face
+      ctx.beginPath(); ctx.moveTo(-r * 0.6, -r * 0.25); ctx.lineTo(-r * 0.25, -r * 0.25); ctx.lineTo(-r * 0.42, -r * 0.55); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(r * 0.6, -r * 0.25); ctx.lineTo(r * 0.25, -r * 0.25); ctx.lineTo(r * 0.42, -r * 0.55); ctx.fill();
+      ctx.fillRect(-r * 0.55, r * 0.15, r * 1.1, r * 0.28);
+      ctx.fillStyle = '#3a5a1a'; ctx.fillRect(-2, -r - 4, 4, 7); // stem
+    } else if (t.kind === 'grave') {
+      const w = t.r * 1.1, h = t.r * 1.5;
+      ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(-w / 2 + 4, -h / 2 + 4, w, h);
+      ctx.fillStyle = '#6f6a7a';
+      ctx.beginPath(); ctx.moveTo(-w / 2, h / 2); ctx.lineTo(-w / 2, -h / 2 + w / 2);
+      ctx.arc(0, -h / 2 + w / 2, w / 2, Math.PI, 0); ctx.lineTo(w / 2, h / 2); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#3f3b48'; ctx.fillRect(-2, -h / 4, 4, h * 0.45); ctx.fillRect(-w / 4, -h / 8, w / 2, 4); // cross
+    } else {
+      ctx.strokeStyle = '#120a18'; ctx.lineCap = 'round'; // dead tree: bare branches from above
+      for (let i = 0; i < 5; i++) {
+        const ang = (i / 5) * Math.PI * 2, len = t.r * (1.1 + (i % 2) * 0.5);
+        ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(ang) * len, Math.sin(ang) * len); ctx.stroke();
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(Math.cos(ang) * len * 0.6, Math.sin(ang) * len * 0.6);
+        ctx.lineTo(Math.cos(ang + 0.5) * len * 0.95, Math.sin(ang + 0.5) * len * 0.95); ctx.stroke();
+      }
+      ctx.fillStyle = '#2a1a22'; ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // Traffic ghost: head at the front, wavy tail trailing behind, inside the car hitbox.
+  function drawGhost(pose, color, now, seed) {
+    ctx.save();
+    ctx.translate(pose.x, pose.y);
+    ctx.rotate(pose.th + Math.PI / 2);
+    const r = CAR_W / 2, top = -CAR_L / 2, bottom = CAR_L / 2;
+    const body = () => {
+      ctx.beginPath();
+      ctx.arc(0, top + r, r, Math.PI, 0);
+      ctx.lineTo(r, bottom - 6);
+      const waves = 3, phase = now / 140 + seed;
+      for (let i = 0; i <= waves * 2; i++) {
+        const x = r - (i / (waves * 2)) * 2 * r;
+        ctx.lineTo(x, bottom - 6 + (i % 2 ? 6 : 0) + Math.sin(phase + i) * 2);
+      }
+      ctx.closePath();
+    };
+    ctx.fillStyle = 'rgba(200,220,255,0.16)'; // halo
+    ctx.save(); ctx.scale(1.35, 1.15); body(); ctx.fill(); ctx.restore();
+    ctx.fillStyle = color;
+    body(); ctx.fill();
+    ctx.fillStyle = '#16121c'; // eyes look ahead
+    ctx.beginPath(); ctx.ellipse(-6, top + r - 2, 3.5, 5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(6, top + r - 2, 3.5, 5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  // A few bats flapping across the screen (screen space, purely decorative).
+  const bats = Array.from({ length: 3 }, (_, i) => ({ x: Math.random() * W, y: 70 + Math.random() * 200, v: 40 + Math.random() * 50, dir: i % 2 ? 1 : -1, ph: Math.random() * 6 }));
+  function drawBats(dt, now) {
+    ctx.fillStyle = '#0b0610';
+    for (const b of bats) {
+      b.x += b.v * b.dir * dt;
+      b.y += Math.sin(now / 400 + b.ph) * 0.4;
+      if (b.x < -40 || b.x > W + 40) { b.dir *= -1; b.y = 70 + Math.random() * 220; }
+      const flap = Math.sin(now / 70 + b.ph) * 7;
+      ctx.beginPath();
+      ctx.moveTo(b.x, b.y);
+      ctx.quadraticCurveTo(b.x - 9, b.y - 8 - flap, b.x - 18, b.y - flap);
+      ctx.quadraticCurveTo(b.x - 10, b.y - 2, b.x - 6, b.y + 3);
+      ctx.lineTo(b.x, b.y + 1);
+      ctx.lineTo(b.x + 6, b.y + 3);
+      ctx.quadraticCurveTo(b.x + 10, b.y - 2, b.x + 18, b.y - flap);
+      ctx.quadraticCurveTo(b.x + 9, b.y - 8 - flap, b.x, b.y);
+      ctx.fill();
+    }
+  }
+  const vignette = ctx.createRadialGradient(W / 2, CAR_Y - 80, 160, W / 2, CAR_Y - 80, 560);
+  vignette.addColorStop(0, 'rgba(0,0,0,0)');
+  vignette.addColorStop(1, 'rgba(8,0,16,0.75)');
+
   function drawCar(pose, color, yaw = 0, player = false) {
     ctx.save();
     ctx.translate(pose.x, pose.y);
@@ -322,16 +421,20 @@ export function createGame(canvas) {
     ctx.fillRect(-CAR_W / 2 + 4, -CAR_L / 2 + 12, CAR_W - 8, 12); // windscreen
     ctx.fillRect(-CAR_W / 2 + 5, CAR_L / 2 - 14, CAR_W - 10, 8);  // rear window
     if (player) {
-      ctx.fillStyle = '#fff';
+      ctx.fillStyle = '#111';
       ctx.fillRect(-3, -CAR_L / 2, 6, CAR_L); // racing stripe
     }
     ctx.restore();
   }
 
+  let lastRender = performance.now();
   function render() {
+    const now = performance.now();
+    const rdt = Math.min(0.05, (now - lastRender) / 1000);
+    lastRender = now;
     const me = g.track.pose(g.s, g.lat);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = '#2e7d32';
+    ctx.fillStyle = THEME.ground;
     ctx.fillRect(0, 0, W, H);
 
     // Camera: car fixed at (W/2, CAR_Y), track heading pointing up.
@@ -342,21 +445,22 @@ export function createGame(canvas) {
     const pts = g.track.range(g.s - VIEW_BEHIND, g.s + VIEW_AHEAD);
     const anchor = pts[0]?.s || 0; // keeps dash patterns fixed to the world
     // Trees first so any that land near a bend sit under the road, not on it.
-    ctx.fillStyle = '#1b5e20';
-    for (const p of pts) for (const t of p.trees) {
-      ctx.beginPath(); ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2); ctx.fill();
-    }
+    for (const p of pts) for (const t of p.trees) drawDecor(t, now);
     ctx.lineJoin = 'round';
-    strokePath(pts, 0, ROAD_W + 24, '#f2f2f2');
-    strokePath(pts, 0, ROAD_W + 24, '#d32f2f', [22, 22], anchor);
-    strokePath(pts, 0, ROAD_W, '#4a4a4a');
-    for (const l of LANES.slice(1)) strokePath(pts, (l - 0.5) * LANE_W, 4, '#e0e0e0', [26, 30], anchor);
+    strokePath(pts, 0, ROAD_W + 24, THEME.kerb);
+    strokePath(pts, 0, ROAD_W + 24, THEME.kerbDash, [22, 22], anchor);
+    strokePath(pts, 0, ROAD_W, THEME.road);
+    for (const l of LANES.slice(1)) strokePath(pts, (l - 0.5) * LANE_W, 4, THEME.laneDash, [26, 30], anchor);
     ctx.setLineDash([]);
 
-
-    for (const c of g.traffic) drawCar(g.track.pose(c.s, c.lat), c.color);
+    g.traffic.forEach((c, i) => drawGhost(g.track.pose(c.s, c.lat), c.color, now, (c.s % 97) + i));
     const yaw = Math.max(-0.35, Math.min(0.35, ((g.lane * LANE_W - g.lat) / LANE_W) * 0.35));
-    drawCar(me, g.mode === 'playing' || g.mode === 'ready' ? '#d32f2f' : '#7a1010', yaw, true);
+    drawCar(me, g.mode === 'playing' || g.mode === 'ready' ? THEME.player : THEME.playerCrashed, yaw, true);
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, 0, W, H);
+    drawBats(rdt, now);
 
     // HUD
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -391,9 +495,9 @@ export function createGame(canvas) {
   }
 
   function drawButton(b, selected) {
-    ctx.fillStyle = selected ? '#ffd54a' : '#2a3140';
+    ctx.fillStyle = selected ? THEME.accent : THEME.panel;
     ctx.fillRect(b.x, b.y, b.w, b.h);
-    ctx.strokeStyle = '#ffd54a';
+    ctx.strokeStyle = THEME.accent;
     ctx.lineWidth = 3;
     ctx.strokeRect(b.x + 1.5, b.y + 1.5, b.w - 3, b.h - 3);
     ctx.fillStyle = selected ? '#111' : '#fff';
@@ -406,7 +510,7 @@ export function createGame(canvas) {
     ctx.font = 'bold 28px ui-monospace, monospace';
     for (let i = from; i < Math.min(list.length, from + count); i++) {
       const e = list[i];
-      ctx.fillStyle = i === highlight ? '#ffd54a' : '#e8e8e8';
+      ctx.fillStyle = i === highlight ? THEME.accent : '#e8e8e8';
       ctx.textAlign = 'left';
       ctx.fillText(`${String(i + 1).padStart(2)}. ${e.name}`, x, y + (i - from) * 40);
       ctx.textAlign = 'right';
@@ -417,22 +521,24 @@ export function createGame(canvas) {
   function drawMenus() {
     ctx.textAlign = 'center';
     if (g.mode === 'naming') { drawNameEntry(ctx, ui.entry, W, H, performance.now()); return; }
-    ctx.fillStyle = 'rgba(0,0,0,0.72)';
+    ctx.fillStyle = 'rgba(12,4,20,0.78)';
     ctx.fillRect(0, 52, W, H - 52);
     ctx.fillStyle = '#fff';
     ctx.textAlign = 'center';
     if (g.mode === 'ready') {
       ctx.font = 'bold 52px system-ui, sans-serif';
-      ctx.fillText('LANE RACER', W / 2, 112);
+      ctx.fillStyle = THEME.accent;
+      ctx.fillText('HAUNTED HIGHWAY', W / 2, 112);
+      ctx.fillStyle = '#fff';
       const list = board.load();
       if (list.length) drawScores(list, 230, 160, 0, 5, -1);
       else { ctx.font = '26px system-ui, sans-serif'; ctx.fillText('no scores yet', W / 2, 230); }
       drawButton(BTN.start, true);
     } else if (g.mode === 'over') {
       ctx.font = 'bold 52px system-ui, sans-serif';
-      ctx.fillText('CRASHED', W / 2, 130);
+      ctx.fillText('BOO! CRASHED', W / 2, 130);
       ctx.font = 'bold 40px system-ui, sans-serif';
-      ctx.fillStyle = '#ffd54a';
+      ctx.fillStyle = THEME.accent;
       ctx.fillText(`${Math.floor(g.s / 10)} m`, W / 2, 190);
       ctx.fillStyle = '#ccc';
       ctx.font = '24px system-ui, sans-serif';
@@ -469,10 +575,10 @@ export function createGame(canvas) {
 // Wheel LED frame for the current game state (layout in wheelleds.js): the top bar
 // is the brake meter; the side LEDs blink red when the meter is empty.
 export function ledFrame(g, now = performance.now()) {
-  const colors = Array.from({ length: 39 }, (_, i) => (i < 21 ? [0, 0, 0] : [12, 12, 16]));
+  const colors = Array.from({ length: 39 }, (_, i) => (i < 21 ? [0, 0, 0] : [40, 12, 0])); // pumpkin-dim buttons
   const e = g.brakeEnergy ?? 0;
   const lit = Math.ceil(e * 15 - 1e-6);
-  const base = e > 0.5 ? [0, 200, 40] : e > 0.25 ? [230, 160, 0] : [230, 20, 0];
+  const base = e > 0.5 ? [255, 80, 0] : e > 0.25 ? [150, 0, 220] : [230, 0, 0]; // orange, purple, red
   const k = g.braking > 0.05 ? 1 : 0.45; // brighter while braking
   for (let i = 0; i < lit; i++) colors[3 + i] = base.map((v) => Math.round(v * k));
   if (g.mode === 'playing' && e <= 0 && Math.floor(now / 200) % 2 === 0) {
