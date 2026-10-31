@@ -34,6 +34,7 @@
     <button id="connect">Connect screen</button>
     <button id="connectLeds">Connect LEDs</button>
     <button id="lock">🔒 Lock touch</button>
+    <button id="clearBoard">Clear leaderboard</button>
     <span id="status"></span>
   </div>
   <canvas id="canvas" width="800" height="480"></canvas>
@@ -46,6 +47,7 @@
 <script type="module">
 import { createGame, ledFrame } from './game.js';
 import { WheelLeds, openLink } from './wheelleds.js';
+import * as board from './leaderboard.js';
 import { createScreen } from './screen.js';
 import { startBridge, bridgeLog } from './bridge.js';
 
@@ -107,6 +109,15 @@ const swallow = (e) => { e.preventDefault(); e.stopPropagation(); };
 for (const type of ['touchstart', 'touchmove', 'touchend', 'pointerdown', 'pointerup', 'click', 'contextmenu', 'wheel']) {
   overlay.addEventListener(type, swallow, { passive: false });
 }
+$('clearBoard').onclick = () => {
+  const n = board.load().length;
+  if (!n) { alert('The leaderboard is already empty.'); return; }
+  if (confirm(`Clear all ${n} leaderboard ${n === 1 ? 'entry' : 'entries'} on this device? This can't be undone.`)) {
+    board.clear();
+    log('leaderboard cleared');
+  }
+};
+
 $('lock').onclick = async () => {
   overlay.classList.add('on');
   keepAwake();

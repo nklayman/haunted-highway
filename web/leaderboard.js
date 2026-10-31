@@ -31,3 +31,6 @@ export function add(name, score) {
   return { list, index: list.indexOf(entry) };
 }
 
+export function clear() {
+  try { localStorage.removeItem(KEY); } catch {}
+}
