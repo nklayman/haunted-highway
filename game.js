@@ -1,9 +1,9 @@
 // Lane-runner prototype: the car auto-steers along an endless winding road and
 // stays fixed on screen while the world rotates around it. Paddles hop lanes
 // to dodge rows of traffic; clutches boost/brake; thumbs start/restart.
-import { createWheelInput } from './input.js?v=322ef1a';
-import * as board from './leaderboard.js?v=322ef1a';
-import { createNameEntry, handleNameInput, drawNameEntry } from './nameentry.js?v=322ef1a';
+import { createWheelInput } from './input.js?v=caa7c7d';
+import * as board from './leaderboard.js?v=caa7c7d';
+import { createNameEntry, handleNameInput, drawNameEntry } from './nameentry.js?v=caa7c7d';
 
 export const W = 800, H = 480;
 
@@ -225,7 +225,7 @@ export function createGame(canvas) {
         if (hit(t, ui.canSave ? BTN.again : BTN.againSolo)) act = 'again';
       }
       if (act === 'again') reset('playing');
-      if (act === 'save') { g.mode = 'naming'; ui.entry = createNameEntry(board.lastName()); }
+      if (act === 'save') { g.mode = 'naming'; ui.entry = createNameEntry(); }
     } else if (g.mode === 'naming') {
       if (input.back && !ui.entry.name) { g.mode = 'over'; return; }
       if (handleNameInput(ui.entry, input) === 'done') {
