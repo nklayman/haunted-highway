@@ -2,7 +2,8 @@
 // unavailable (private mode, blocked site data), so every access is guarded.
 
 const KEY = 'racewheel.leaderboard.v1';
-const NAME_KEY = 'racewheel.lastName';
+// Older builds remembered the last name entered; drop it so it isn't prefilled anywhere.
+try { localStorage.removeItem('racewheel.lastName'); } catch {}
 export const SIZE = 10;
 
 function read(key, fallback) {
@@ -27,8 +28,6 @@ export function add(name, score) {
   const entry = { name: name.trim().slice(0, 10), score, at: Date.now() };
   const list = [...load(), entry].sort((a, b) => b.score - a.score || a.at - b.at).slice(0, SIZE);
   write(KEY, list);
-  write(NAME_KEY, entry.name);
   return { list, index: list.indexOf(entry) };
 }
 
-export const lastName = () => read(NAME_KEY, '');

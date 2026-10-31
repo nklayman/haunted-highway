@@ -225,7 +225,7 @@ export function createGame(canvas) {
         if (hit(t, ui.canSave ? BTN.again : BTN.againSolo)) act = 'again';
       }
       if (act === 'again') reset('playing');
-      if (act === 'save') { g.mode = 'naming'; ui.entry = createNameEntry(board.lastName()); }
+      if (act === 'save') { g.mode = 'naming'; ui.entry = createNameEntry(); }
     } else if (g.mode === 'naming') {
       if (input.back && !ui.entry.name) { g.mode = 'over'; return; }
       if (handleNameInput(ui.entry, input) === 'done') {
