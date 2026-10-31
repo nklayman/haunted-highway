@@ -1,9 +1,9 @@
 // Lane-runner prototype: the car auto-steers along an endless winding road and
 // stays fixed on screen while the world rotates around it. Paddles hop lanes
 // to dodge rows of traffic; clutches boost/brake; thumbs start/restart.
-import { createWheelInput } from './input.js?v=5525e09';
-import * as board from './leaderboard.js?v=5525e09';
-import { createNameEntry, handleNameInput, drawNameEntry } from './nameentry.js?v=5525e09';
+import { createWheelInput } from './input.js?v=af16fe8';
+import * as board from './leaderboard.js?v=af16fe8';
+import { createNameEntry, handleNameInput, drawNameEntry } from './nameentry.js?v=af16fe8';
 
 export const W = 800, H = 480;
 
@@ -12,19 +12,21 @@ export const LANE_COUNT = 5;
 export const LANE_W = 64;
 export const LANES = Array.from({ length: LANE_COUNT }, (_, i) => i - (LANE_COUNT - 1) / 2); // e.g. -2..2
 const ROAD_W = LANE_W * LANE_COUNT;
-const CAR_L = 58, CAR_W = 32;
-const LANE_SPEED = 430;       // lateral px/s while hopping lanes
-const TRAFFIC_V = 150;        // all traffic moves together so rows keep their gaps
+export const CAR_L = 58, CAR_W = 32;
+export const LANE_SPEED = 430;       // lateral px/s while hopping lanes
+export const TRAFFIC_V = 150;        // all traffic moves together so rows keep their gaps
 // Arc-length ranges of road to keep and draw. Bends can curve the road back into
 // view far along its length, so cover a full loop at the tightest radius (2π·260).
 const VIEW_BEHIND = 1000, VIEW_AHEAD = 2000;
 const HUD_H = 52;
 const CAR_Y = Math.round(H * 0.85);          // car's fixed screen position; low so you can see ahead
 export const SEE_AHEAD = CAR_Y - HUD_H - CAR_L / 2; // road visible ahead of the car's nose
-const REACTION = 0.2;                         // seconds allowed to spot a row and react
-const MIN_ROW_GAP = CAR_L * 2.5;              // last car of one row to first of the next
+export const REACTION = 0.2;                         // seconds allowed to spot a row and react
+export const MIN_ROW_GAP = CAR_L * 4;                // last car of one row to first of the next
+export const ROW_GAP_RANDOM = 300;                   // plus up to this much extra
+const CARS_PER_ROW = 2;
 const ROW_STAGGER = CAR_L * 2;                // cars in a row are spread over this much road
-const baseSpeed = (s) => Math.min(650, 260 + s * 0.012);
+const baseSpeed = (s) => Math.min(800, 260 + s * 0.025);
 // Brake meter: you earn brakes by boosting and spend them by braking.
 const BRAKE_START = 0.25;    // meter level at the start of a run
 const BRAKE_DRAIN_S = 2.5;   // seconds of full braking to empty a full meter
@@ -118,11 +120,8 @@ export function planRow(prevPath, gap, closing, distM, rnd = Math.random) {
   const k = reachableShift(gap, closing);
   const options = LANES.filter((l) => Math.abs(l - prevPath) <= k);
   const pathLane = options[Math.floor(rnd() * options.length)];
-  // Mostly 1-3 cars; 3 from 600 m; an occasional near-wall of 4 after 1500 m.
-  const maxBlocked = Math.min(3, 2 + Math.floor(distM / 600));
-  let count = 1 + Math.floor(rnd() * maxBlocked);
-  if (distM > 1500 && rnd() < 0.15) count = 4;
-  count = Math.min(count, LANE_COUNT - 1);
+  // Fixed traffic density: difficulty comes from the speed ramp, not more cars.
+  const count = Math.min(CARS_PER_ROW, LANE_COUNT - 1);
   const lanes = LANES.filter((l) => l !== pathLane).sort(() => rnd() - 0.5).slice(0, count);
   const cars = lanes.map((lane) => ({ lane, off: rnd() * ROW_STAGGER }));
   const length = Math.max(0, ...cars.map((c) => c.off));
@@ -252,7 +251,7 @@ export function createGame(canvas) {
     }
     g.pathLane = row.pathLane;
     g.lastRowEnd = rowS + row.length;
-    g.nextRowAt = g.lastRowEnd + MIN_ROW_GAP + Math.random() * 260;
+    g.nextRowAt = g.lastRowEnd + MIN_ROW_GAP + Math.random() * ROW_GAP_RANDOM;
   }
 
   function update(dt, input) {
@@ -271,6 +270,10 @@ export function createGame(canvas) {
     g.speed += (want - g.speed) * Math.min(1, dt * 2);
     g.s += g.speed * dt;
     for (const c of g.traffic) c.s += TRAFFIC_V * dt;
+    // Row bookmarks live in the traffic's moving frame too; otherwise each new row is
+    // placed relative to where the previous row *was*, and the real gaps shrink.
+    g.nextRowAt += TRAFFIC_V * dt;
+    g.lastRowEnd += TRAFFIC_V * dt;
 
     while (g.nextRowAt < g.s + VIEW_AHEAD + 300) spawnRow();
     g.traffic = g.traffic.filter((c) => c.s > g.s - VIEW_BEHIND);
