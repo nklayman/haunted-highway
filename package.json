@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node test/feasibility.test.mjs && node test/traffic.test.mjs",
     "bridge": "node server.mjs",
     "bridge:lan": "HOST=0.0.0.0 node server.mjs",
     "deploy": "node scripts/deploy.mjs --push"
