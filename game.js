@@ -1,9 +1,9 @@
 // Lane-runner prototype: the car auto-steers along an endless winding road and
 // stays fixed on screen while the world rotates around it. Paddles hop lanes
 // to dodge rows of traffic; clutches boost/brake; thumbs start/restart.
-import { createWheelInput } from './input.js?v=af16fe8';
-import * as board from './leaderboard.js?v=af16fe8';
-import { createNameEntry, handleNameInput, drawNameEntry } from './nameentry.js?v=af16fe8';
+import { createWheelInput } from './input.js?v=aca697f';
+import * as board from './leaderboard.js?v=aca697f';
+import { createNameEntry, handleNameInput, drawNameEntry } from './nameentry.js?v=aca697f';
 
 export const W = 800, H = 480;
 
@@ -24,7 +24,6 @@ export const SEE_AHEAD = CAR_Y - HUD_H - CAR_L / 2; // road visible ahead of the
 export const REACTION = 0.2;                         // seconds allowed to spot a row and react
 export const MIN_ROW_GAP = CAR_L * 4;                // last car of one row to first of the next
 export const ROW_GAP_RANDOM = 300;                   // plus up to this much extra
-const CARS_PER_ROW = 2;
 const ROW_STAGGER = CAR_L * 2;                // cars in a row are spread over this much road
 const baseSpeed = (s) => Math.min(800, 260 + s * 0.025);
 // Brake meter: you earn brakes by boosting and spend them by braking.
@@ -114,14 +113,24 @@ export function reachableShift(gap, closing) {
 // Plan one traffic row. `prevPath` is the lane guaranteed open in the previous
 // row; the new guaranteed lane is always within reach of it, so there is never
 // a wall. Other lanes may be blocked freely (dead ends are part of the game).
+// Traffic density ramps gently within a narrow band: rows are normally 2 cars; some
+// 1-car rows early on (fading out by 300 m), and 3-car rows growing from 300 m to a
+// 60% share at 1800 m (about when top speed arrives). Never more than 3, so at least
+// two lanes are always open.
+export function carsInRow(distM, rnd = Math.random) {
+  const p1 = Math.max(0, 0.25 * (1 - distM / 300));
+  const p3 = Math.min(0.6, Math.max(0, (distM - 300) / 2500));
+  const r = rnd();
+  return r < p1 ? 1 : r < p1 + p3 ? 3 : 2;
+}
+
 // `gap` runs from the previous row's last car to this row's start. Cars are
 // staggered by `off` (0..ROW_STAGGER) past the start; `length` is the row's extent.
 export function planRow(prevPath, gap, closing, distM, rnd = Math.random) {
   const k = reachableShift(gap, closing);
   const options = LANES.filter((l) => Math.abs(l - prevPath) <= k);
   const pathLane = options[Math.floor(rnd() * options.length)];
-  // Fixed traffic density: difficulty comes from the speed ramp, not more cars.
-  const count = Math.min(CARS_PER_ROW, LANE_COUNT - 1);
+  const count = Math.min(carsInRow(distM, rnd), LANE_COUNT - 1);
   const lanes = LANES.filter((l) => l !== pathLane).sort(() => rnd() - 0.5).slice(0, count);
   const cars = lanes.map((lane) => ({ lane, off: rnd() * ROW_STAGGER }));
   const length = Math.max(0, ...cars.map((c) => c.off));
